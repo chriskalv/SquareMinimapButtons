@@ -1,0 +1,52 @@
+	ProjectAzilroka License
+	Copyright 2020 http://www.tukui.org
+
+	The contents of this addon, excluding third-party resources, are
+	copyrighted to their authors with all rights reserved.
+
+	This addon is free to use and the authors hereby grants you the following rights:
+
+	1. 	You may NOT make any modification inside this addon. If you want
+		to create your own edited version, please create it from outside.
+
+	2. 	Do not modify the name of this addon, including the addon folders.
+
+	3. 	This copyright notice shall be included in all copies or substantial
+		portions of the Software.
+
+	All rights not explicitly addressed in this license are reserved by
+	the copyright holders.
+
+	You can write us at Tukui.org for reporting abuse.
+	For reporting bugs visit: https://github.com/Azilroka/ProjectAzilroka
+
+
+------------------------------------------------------------------------
+WoW Forever port
+------------------------------------------------------------------------
+
+The text above is the license of ProjectAzilroka, unchanged. It covers the
+parts of this addon that are taken from ProjectAzilroka by Azilroka: the
+Square Minimap Buttons module (Modules/SquareMinimapButtons.lua), the helpers
+of its core (Init.lua) and the option labels of its locales. Files that
+contain such parts say "Ported from ProjectAzilroka (Azilroka), see
+LICENSE.txt" in their header. Copyright of these parts stays with their
+authors (Azilroka, with Sinaris, Omega and Durc as authors of the module).
+
+Permission: Zippy reports that Azilroka personally allowed him to port the
+Square Minimap Buttons part of ProjectAzilroka to WoW Forever (reported on
+2026-11-05). The exact wording will be added here together with the written
+record of that permission. The port is distributed only on the basis of this
+permission and only for WoW Forever. It has its own folder and name
+(SquareMinimapButtons, Azilroka's name for the module); ProjectAzilroka
+itself is not renamed or modified.
+
+What is taken and what is changed: the module is ported to a standalone addon
+with its own core, client detection for WoW Forever, a different default
+profile, a few corrections and extensions. The full list of changes is in
+README.md.
+
+Third-party resources keep their own licenses:
+
+- Ace3 (WoWUIDev/Ace3, commit ac3d122), embedded unmodified in Libs/Ace3:
+  see Libs/Ace3/LICENSE.txt.
