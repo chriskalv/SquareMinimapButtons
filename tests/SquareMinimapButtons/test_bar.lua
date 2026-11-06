@@ -363,6 +363,8 @@ describe("grid (Update)", function()
         SMB.db.Strata = "HIGH"
         SMB.db.Level = 20
         local buttons = addButtons(2)
+        buttons[1]:SetScale(0.8)
+        buttons[2]:SetScale(1.25)
         SMB:GrabMinimapButtons()
         local Bar = SMB.Bar
         assert_eq(Bar:GetFrameStrata(), "HIGH")

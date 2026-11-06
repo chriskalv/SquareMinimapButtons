@@ -99,7 +99,7 @@ describe("fade on the bar (scripts of Initialize)", function()
         assert_eq(#STUB.fades, 1)
         SMB.db.BarMouseOver = true
         Bar:GetScript("OnLeave")(Bar)
-        assert_eq({ lastFade().mode, lastFade().from, lastFade().to }, { "OUT", 1, 0 })
+        assert_eq({ lastFade().mode, lastFade().duration, lastFade().from, lastFade().to }, { "OUT", 0.2, 1, 0 })
         Bar:GetScript("OnEnter")(Bar)
         assert_eq({ lastFade().mode, lastFade().from, lastFade().to }, { "IN", 0, 1 })
         assert_true(lastFade().frame == Bar)
