@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Interface-Forever: 16001
 ## Title: Square Minimap Buttons
-## Notes: Minimap button bar and square minimap button skinning. Port of the Square Minimap Buttons module of ProjectAzilroka by Azilroka to WoW Forever, with his permission.
+## Notes: Minimap button bar and square minimap button skinning. Port of the Square Minimap Buttons module of ProjectAzilroka by Azilroka to WoW Forever, with Azilroka's permission.
 ## Author: Azilroka (original), Zippy (WoW Forever port)
 ## Version: 1.0.0
 ## OptionalDeps: ElvUI, Tukui, AddOnSkins

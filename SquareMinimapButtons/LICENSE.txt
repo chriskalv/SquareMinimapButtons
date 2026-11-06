@@ -33,7 +33,7 @@ contain such parts say "Ported from ProjectAzilroka (Azilroka), see
 LICENSE.txt" in their header. Copyright of these parts stays with their
 authors (Azilroka, with Sinaris, Omega and Durc as authors of the module).
 
-Permission: Zippy reports that Azilroka personally allowed him to port the
+Permission: Zippy reports that Azilroka personally allowed the port of the
 Square Minimap Buttons part of ProjectAzilroka to WoW Forever (reported on
 2026-11-05). The exact wording will be added here together with the written
 record of that permission. The port is distributed only on the basis of this
