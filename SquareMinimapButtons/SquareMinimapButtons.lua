@@ -2,12 +2,11 @@
 	Square Minimap Buttons for WoW Forever: the module (scan, skinning, bar, Blizzard buttons).
 
 	Ported from ProjectAzilroka (Azilroka), see LICENSE.txt.
-	This file follows ProjectAzilroka's Modules/SquareMinimapButtons.lua. It contains so far the
-	scan of the minimap (GrabMinimapButtons), the skinning of the buttons (SkinMinimapButton,
-	HandleRegion), the locking of their position methods (LockButton, UnlockButton), the bar
-	(Initialize, Update, fading, visibility driver, mover and dragging). The Blizzard buttons
-	(HandleBlizzardButtons) and the options follow in the next packages of the port; the code here
-	calls SMB.HandleBlizzardButtons only if it exists.
+	This file follows ProjectAzilroka's Modules/SquareMinimapButtons.lua. It contains the scan of
+	the minimap (GrabMinimapButtons), the skinning of the buttons (SkinMinimapButton, HandleRegion),
+	the locking of their position methods (LockButton, UnlockButton), the Blizzard buttons
+	(HandleBlizzardButtons: mail, tracking, queue, calendar) and the bar (Initialize, Update,
+	fading, visibility driver, mover and dragging). The options follow in the next package.
 
 	Changes from the original in this part:
 	  - an own ignore list from the profile (db.IgnoreList: button names or Lua patterns) next to
@@ -27,7 +26,17 @@
 	    db.AnchorToMinimap stop the dragging (of the bar and of its buttons);
 	  - the ElvUI and Tukui movers are used only if the global of that addon exists (an enabled but
 	    not loaded ElvUI would raise an error in the original);
-	  - the HandleBlizzardButtons timer (7 seconds) calls it only if it exists;
+	  - Update fades the bar in or out only when it has buttons; in the original UIFrameFadeIn/Out
+	    showed the empty bar again right after hiding it;
+	  - HandleBlizzardButtons: branches for WoW Forever (tracking and queue as in Retail, the
+	    calendar as in Classic); in Forever the tracking frame is shown instead of calling the
+	    button's Show() (Blizzard's mixin hides the frame then), the queue click calls
+	    ToggleGroupFinderFrame() and the calendar gets its own branch (no GameTimeTexture there);
+	    in Retail the queue click uses PVEFrame and GroupFinderFrame_ShowGroupFrame only if they
+	    exist; no queue frame while ElvUI's queue holder (ElvUIQueueStatus) exists; missing frames
+	    are skipped; the class color border only on frames with backdrop methods; the queue frame
+	    starts with the mouse state that its OnShow/OnHide hooks keep; Update runs at the end also
+	    in combat, where it waits for the end of combat (the original skips it in combat);
 	  - Initialize builds the bar only once;
 	  - CheckTexture and SMB.Hider of the original are unused there and left out.
 ]]
@@ -140,6 +149,251 @@ end
 function SMB:ToggleBar_FrameStrataLevel(value)
 	if SMB.Bar.SetFixedFrameStrata then SMB.Bar:SetFixedFrameStrata(value) end
 	if SMB.Bar.SetFixedFrameLevel then SMB.Bar:SetFixedFrameLevel(value) end
+end
+
+--------------------------------------------------------------------------------
+-- Blizzard buttons (mail, tracking, queue, calendar)
+-- Like the original, this only adds buttons: every button is built once (the frames SMB_MailFrame
+-- and SMB_QueueFrame exist once, Blizzard's buttons get the marker .SMB); taking one out again
+-- needs a reload. Missing frames (for example no QueueStatusButton) are skipped.
+--
+-- Branches per client (the original knows Retail and the rest):
+--   mail       all clients
+--   tracking   Forever and Retail
+--   queue      Forever and Retail; in Forever the click opens the group finder through
+--              ToggleGroupFinderFrame() (PVEFrame and GroupFinderFrame_ShowGroupFrame do not exist
+--              there); not with ElvUI's queue module (see below)
+--   calendar   Forever and Classic; Forever has no GameTimeTexture (own branch below)
+--   garrison   commented out in the original; nothing is built (HideGarrison and MoveGarrison have
+--              no effect)
+--------------------------------------------------------------------------------
+
+-- Border in the class color while the mouse is over a Blizzard button (frames skinned by AddOnSkins
+-- may lack the backdrop methods).
+local function SetClassColorBorder(frame)
+	if frame.SetBackdropBorderColor then
+		frame:SetBackdropBorderColor(unpack(SMB.ClassColor))
+	end
+end
+
+local CALENDAR_ATLAS = 'ui-hud-minimap-calendar-button'
+
+function SMB:HandleBlizzardButtons()
+	-- the bar exists only after Initialize
+	if not SMB.Bar or not SMB.db.BarEnabled then return end
+	local Size = SMB.db.IconSize
+	local CreateFrame, GameTooltip, HasNewMail, MinimapMailFrameUpdate = _G.CreateFrame, _G.GameTooltip, _G.HasNewMail, _G.MinimapMailFrameUpdate
+	local UIFrameFadeIn, UIFrameFadeOut = _G.UIFrameFadeIn, _G.UIFrameFadeOut
+
+	if SMB.db.MoveMail and not _G.SMB_MailFrame then
+		local Frame = CreateFrame('Frame', 'SMB_MailFrame', SMB.Bar)
+		Frame:SetSize(Size, Size)
+		SMB:SetTemplate(Frame)
+		Frame.Icon = Frame:CreateTexture(nil, 'ARTWORK')
+		SMB:SetInside(Frame.Icon)
+		Frame.Icon:SetTexture('Interface/Icons/INV_Letter_15')
+		Frame.Icon:SetTexCoord(SMB:TexCoords())
+		Frame:EnableMouse(true)
+		Frame:HookScript('OnEnter', function(_self)
+			if HasNewMail() then
+				GameTooltip:SetOwner(_self, "ANCHOR_BOTTOMRIGHT")
+				MinimapMailFrameUpdate()
+			end
+			SetClassColorBorder(_self)
+			if SMB.Bar:IsShown() and SMB.db.BarMouseOver then
+				UIFrameFadeIn(SMB.Bar, 0.2, SMB.Bar:GetAlpha(), 1)
+			end
+		end)
+		Frame:HookScript('OnLeave', function(s)
+			GameTooltip:Hide()
+			SMB:SetTemplate(s)
+			if SMB.Bar:IsShown() and SMB.db.BarMouseOver then
+				UIFrameFadeOut(SMB.Bar, 0.2, SMB.Bar:GetAlpha(), 0)
+			end
+		end)
+
+		Frame:RegisterEvent('UPDATE_PENDING_MAIL')
+		Frame:SetScript('OnEvent', function(_self, event)
+			if event == 'UPDATE_PENDING_MAIL' then
+				if HasNewMail() then
+					_self.Icon:SetVertexColor(0, 1, 0)
+					if GameTooltip:IsOwned(_self) then
+						MinimapMailFrameUpdate()
+					end
+				else
+					_self.Icon:SetVertexColor(1, 1, 1)
+				end
+			end
+		end)
+
+		if HasNewMail() then Frame.Icon:SetVertexColor(0, 1, 0) end
+		if SMB.db.Shadows then SMB:CreateShadow(Frame) end
+
+		tinsert(SMB.Buttons, Frame)
+	end
+
+	if SMB.IsForever or SMB.IsRetail then
+		-- Garrison (ExpansionLandingPageMinimapButton): commented out in the original, not built.
+
+		local MinimapCluster = _G.MinimapCluster
+		local Tracking = MinimapCluster and MinimapCluster.Tracking
+		local TrackingButton = Tracking and Tracking.Button
+		if SMB.db.MoveTracker and TrackingButton and not TrackingButton.SMB then
+			if SMB.IsForever then
+				-- In WoW Forever MiniMapTrackingButtonMixin replaces Show(shown) with
+				-- MinimapCluster.Tracking:SetShown(shown): the original's Show() without an argument
+				-- would hide the tracking frame. Show the frame itself instead.
+				Tracking:Show()
+			else
+				TrackingButton:Show()
+			end
+			SMB:SetTemplate(TrackingButton)
+			TrackingButton:SetParent(SMB.Bar)
+			TrackingButton:SetSize(Size, Size)
+			if Tracking.Background then Tracking.Background:SetAlpha(0) end
+			TrackingButton:ClearAllPoints()
+			TrackingButton:SetAllPoints(Tracking)
+
+			TrackingButton:SetScript('OnMouseDown', nil)
+			TrackingButton:SetScript('OnMouseUp', nil)
+
+			TrackingButton:HookScript('OnEnter', function()
+				SetClassColorBorder(TrackingButton)
+				if SMB.Bar:IsShown() then
+					UIFrameFadeIn(SMB.Bar, 0.2, SMB.Bar:GetAlpha(), 1)
+				end
+			end)
+			TrackingButton:HookScript('OnLeave', function()
+				SMB:SetTemplate(TrackingButton)
+				if SMB.Bar:IsShown() and SMB.db.BarMouseOver then
+					UIFrameFadeOut(SMB.Bar, 0.2, SMB.Bar:GetAlpha(), 0)
+				end
+			end)
+
+			TrackingButton.SMB = true
+
+			if SMB.db.Shadows then
+				SMB:CreateShadow(TrackingButton)
+			end
+
+			tinsert(SMB.Buttons, TrackingButton)
+		end
+
+		-- ElvUI's queue module keeps the QueueStatusButton in its holder ElvUIQueueStatus and puts it
+		-- back there on every SetParent, SetPoint and SetScale (hooks in its QueueStatus.lua). With
+		-- that holder the queue button is left alone; SMB.queueLocked tells the options.
+		local QueueStatusButton = _G.QueueStatusButton
+		SMB.queueLocked = _G.ElvUIQueueStatus ~= nil
+		-- Taint: QueueStatusButton is an Edit Mode system (Group Finder) with secure anchor code;
+		-- Blizzard anchors it again in UpdateDefaultAnchor, and a frame anchored by an addon can taint
+		-- Edit Mode. MoveQueue is therefore off by default in WoW Forever (see Core.lua).
+		if SMB.db.MoveQueue and QueueStatusButton and not QueueStatusButton.SMB and not SMB.queueLocked then
+			local Frame = CreateFrame('Frame', 'SMB_QueueFrame', SMB.Bar)
+			SMB:SetTemplate(Frame)
+			Frame:SetSize(Size, Size)
+			Frame.Icon = Frame:CreateTexture(nil, 'ARTWORK')
+			Frame.Icon:SetSize(Size, Size)
+			Frame.Icon:SetPoint('CENTER')
+			Frame.Icon:SetTexture('Interface/LFGFrame/LFG-Eye')
+			Frame.Icon:SetTexCoord(0, 64 / 512, 0, 64 / 256)
+			Frame:SetScript('OnMouseDown', function()
+				if SMB.IsForever then
+					if _G.ToggleGroupFinderFrame then _G.ToggleGroupFinderFrame() end
+				elseif _G.PVEFrame then
+					if _G.PVEFrame:IsShown() then
+						_G.HideUIPanel(_G.PVEFrame)
+					else
+						_G.ShowUIPanel(_G.PVEFrame)
+						if _G.GroupFinderFrame_ShowGroupFrame then _G.GroupFinderFrame_ShowGroupFrame() end
+					end
+				end
+			end)
+			Frame:HookScript('OnEnter', function(s)
+				SetClassColorBorder(s)
+				if SMB.Bar:IsShown() then
+					UIFrameFadeIn(SMB.Bar, 0.2, SMB.Bar:GetAlpha(), 1)
+				end
+			end)
+			Frame:HookScript('OnLeave', function(s)
+				SMB:SetTemplate(s)
+				if SMB.Bar:IsShown() and SMB.db.BarMouseOver then
+					UIFrameFadeOut(SMB.Bar, 0.2, SMB.Bar:GetAlpha(), 0)
+				end
+			end)
+
+			QueueStatusButton:SetParent(SMB.Bar)
+			QueueStatusButton:SetFrameLevel(Frame:GetFrameLevel() + 2)
+			QueueStatusButton:ClearAllPoints()
+			QueueStatusButton:SetPoint("CENTER", Frame, "CENTER", 0, 0)
+
+			-- The frame takes the mouse only while the queue button over it is hidden.
+			Frame:EnableMouse(not QueueStatusButton:IsShown())
+			QueueStatusButton:HookScript('OnShow', function() Frame:EnableMouse(false) end)
+			if QueueStatusButton.OnLeave then
+				QueueStatusButton:HookScript('PostClick', QueueStatusButton.OnLeave)
+			end
+			QueueStatusButton:HookScript('OnHide', function() Frame:EnableMouse(true) end)
+
+			QueueStatusButton.SMB = true
+
+			if SMB.db.Shadows then
+				SMB:CreateShadow(Frame)
+			end
+
+			tinsert(SMB.Buttons, Frame)
+		end
+	end
+
+	if not SMB.IsRetail then
+		local GameTimeFrame = _G.GameTimeFrame
+		if SMB.db.MoveGameTimeFrame and GameTimeFrame and not GameTimeFrame.SMB then
+			SMB:SetTemplate(GameTimeFrame)
+
+			if SMB.IsForever then
+				-- WoW Forever draws the button with StateTexture and AddTexture (atlas
+				-- ui-hud-minimap-calendar-button) and has no GameTimeTexture. Blizzard sets the atlas of
+				-- StateTexture and the alpha of AddTexture again on every button state, so both are
+				-- emptied and made transparent; an own icon inside the frame shows the calendar. The
+				-- click stays Blizzard's (OnClick opens the calendar).
+				for _, region in next, { GameTimeFrame.StateTexture, GameTimeFrame.AddTexture } do
+					region:SetTexture()
+					region:SetAlpha(0)
+				end
+				if not GameTimeFrame.SMBIcon then
+					local Icon = GameTimeFrame:CreateTexture(nil, 'ARTWORK')
+					SMB:SetInside(Icon)
+					local C_Texture = _G.C_Texture
+					if Icon.SetAtlas and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(CALENDAR_ATLAS) then
+						Icon:SetAtlas(CALENDAR_ATLAS)
+					else
+						Icon:SetTexture('Interface/Calendar/UI-Calendar-Button')
+					end
+					GameTimeFrame.SMBIcon = Icon
+				end
+
+				GameTimeFrame:HookScript('OnEnter', function()
+					SetClassColorBorder(GameTimeFrame)
+					if SMB.Bar:IsShown() then
+						UIFrameFadeIn(SMB.Bar, 0.2, SMB.Bar:GetAlpha(), 1)
+					end
+				end)
+				GameTimeFrame:HookScript('OnLeave', function()
+					SMB:SetTemplate(GameTimeFrame)
+					if SMB.Bar:IsShown() and SMB.db.BarMouseOver then
+						UIFrameFadeOut(SMB.Bar, 0.2, SMB.Bar:GetAlpha(), 0)
+					end
+				end)
+			elseif _G.GameTimeTexture then
+				_G.GameTimeTexture:SetTexture('')
+			end
+
+			GameTimeFrame.SMB = true
+			tinsert(SMB.Buttons, GameTimeFrame)
+		end
+	end
+
+	-- The original calls Update only out of combat; Update itself waits for the end of combat.
+	SMB:Update()
 end
 
 --------------------------------------------------------------------------------
@@ -435,10 +689,14 @@ function SMB:Update()
 		Bar:Show()
 	end
 
-	if SMB.db.BarMouseOver then
-		_G.UIFrameFadeOut(Bar, 0.2, Bar:GetAlpha(), 0)
-	else
-		_G.UIFrameFadeIn(Bar, 0.2, Bar:GetAlpha(), 1)
+	-- Only with buttons: UIFrameFadeIn/Out show the frame (UIFrameFade calls frame:Show()), so in the
+	-- original the empty bar came back as a narrow strip without its visibility driver.
+	if ActualButtons > 0 then
+		if SMB.db.BarMouseOver then
+			_G.UIFrameFadeOut(Bar, 0.2, Bar:GetAlpha(), 0)
+		else
+			_G.UIFrameFadeIn(Bar, 0.2, Bar:GetAlpha(), 1)
+		end
 	end
 end
 
@@ -491,7 +749,5 @@ function SMB:Initialize()
 
 	SMB:RegisterEvent('PLAYER_ENTERING_WORLD')
 	SMB:ScheduleRepeatingTimer('GrabMinimapButtons', 6)
-	SMB:ScheduleTimer(function()
-		if SMB.HandleBlizzardButtons then SMB:HandleBlizzardButtons() end
-	end, 7)
+	SMB:ScheduleTimer('HandleBlizzardButtons', 7)
 end

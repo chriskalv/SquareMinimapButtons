@@ -1,6 +1,7 @@
 -- Test group 7 (fade and visibility): UIFrameFadeIn/Out after ProjectAzilroka's
 -- Modules/SquareMinimapButtons.lua (button hooks 324-334, bar scripts 540-545, end of Update
--- 447-451) and the visibility driver (Update 439-445, db.Visibility).
+-- 447-451) and the visibility driver (Update 439-445, db.Visibility). Change of the port: Update
+-- fades only with buttons (ActualButtons > 0), so an empty bar stays hidden.
 
 local function fresh(config)
     ReloadAddon(config or {})
@@ -41,6 +42,32 @@ describe("fade at the end of Update", function()
         assert_eq({ f.mode, f.duration, f.from, f.to }, { "OUT", 0.2, 1, 0 })
         assert_eq(SMB.Bar:GetAlpha(), 0)
         assert_true(SMB.Bar:IsShown(), "faded out, not hidden")
+    end)
+end)
+
+describe("fade only with buttons (correction of the port)", function()
+    it("without buttons: no fade, the bar stays hidden (also with BarMouseOver)", function()
+        local SMB = fresh()
+        assert_eq(#STUB.fades, 0, "the first scan found no button")
+        assert_false(SMB.Bar:IsShown())
+        SMB:Update()
+        SMB.db.BarMouseOver = true
+        SMB:Update()
+        assert_eq(#STUB.fades, 0)
+        assert_false(SMB.Bar:IsShown())
+    end)
+
+    it("the last button hidden: no fade, the bar is hidden; a button again: fade as before", function()
+        local SMB, buttons = withButtons(1)
+        buttons[1]:Hide()
+        SMB:Update()
+        assert_eq(#STUB.fades, 0)
+        assert_false(SMB.Bar:IsShown())
+        buttons[1]:Show()
+        SMB:Update()
+        assert_eq(#STUB.fades, 1)
+        assert_eq(lastFade().mode, "IN")
+        assert_true(SMB.Bar:IsShown())
     end)
 end)
 

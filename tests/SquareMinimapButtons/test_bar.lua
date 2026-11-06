@@ -194,10 +194,12 @@ describe("start (Initialize)", function()
         assert_nil(b.isSkinned)
         AdvanceTime(0.2)
         assert_true(b.isSkinned, "after 12 s")
-        assert_true(SMB.Buttons[2] == b)
+        -- the Blizzard buttons (mail, tracking, calendar) joined at 7 s, between the two
+        assert_true(SMB.Buttons[1] == a)
+        assert_true(SMB.Buttons[#SMB.Buttons] == b)
     end)
 
-    it("the 7 second timer calls HandleBlizzardButtons once if it exists, and raises no error without it", function()
+    it("the 7 second timer calls HandleBlizzardButtons once", function()
         local SMB = fresh()
         AdvanceTime(7.1)
         assert_eq(STUB.errors, {})
@@ -413,7 +415,7 @@ describe("grid (Update)", function()
         assert_eq(StubState(buttons[1]).elvTemplate, { "Transparent", true })
     end)
 
-    it("without visible buttons: driver off and Hide; the fade of the original shows the bar again", function()
+    it("without visible buttons: driver off and Hide, no fade, the bar stays hidden", function()
         local SMB = fresh()
         local hides = 0
         SMB.Bar:HookScript("OnHide", function() hides = hides + 1 end)
@@ -423,14 +425,18 @@ describe("grid (Update)", function()
         buttons[1]:Hide()
         buttons[2]:Hide()
         STUB.stateDriverLog = {}
+        STUB.fades = {}
         SMB:Update()
         assert_nil(STUB.stateDrivers[SMB.Bar].visibility, "driver unregistered")
         assert_eq(STUB.stateDriverLog, { { action = "unregister", frame = SMB.Bar, state = "visibility" } })
         assert_eq(hides, 1, "Hide called")
         assert_eq({ SMB.Bar:GetSize() }, { 2, 26 })
         -- ProjectAzilroka fades the bar in after hiding it (447-451), and UIFrameFadeIn shows the
-        -- frame (FrameUtil.lua UIFrameFade): the empty bar ends up shown, as in the original.
-        assert_true(SMB.Bar:IsShown())
+        -- frame (FrameUtil.lua UIFrameFade): the empty bar came back as a strip of 2 x 26 without its
+        -- driver. The port fades only with buttons (ActualButtons > 0).
+        assert_eq(#STUB.fades, 0, "no fade without buttons")
+        assert_false(SMB.Bar:IsShown(), "the empty bar stays hidden")
+        assert_eq(hides, 1)
     end)
 
     it("does nothing with BarEnabled off, and nothing before the bar exists", function()
@@ -606,13 +612,18 @@ describe("combat", function()
 end)
 
 describe("profile change", function()
+    -- without the Blizzard buttons, which a profile change adds (test_blizzard.lua), so that the
+    -- layout shows only the addon buttons
+    local noBlizzard = { MoveMail = false, MoveTracker = false, MoveGameTimeFrame = false, MoveQueue = false }
     local function twoProfiles()
+        local other = { ButtonsPerRow = 5, AnchorToMinimap = false, BarPosition = { "TOP", "TOP", 0, -50 } }
+        for k, v in pairs(noBlizzard) do other[k] = v end
         return {
             savedVariables = {
                 profileKeys = { ["Zippy - Forever"] = "Zippy - Forever" },
                 profiles = {
-                    ["Zippy - Forever"] = {},
-                    Other = { ButtonsPerRow = 5, AnchorToMinimap = false, BarPosition = { "TOP", "TOP", 0, -50 } },
+                    ["Zippy - Forever"] = CopyTable(noBlizzard),
+                    Other = other,
                 },
             },
         }

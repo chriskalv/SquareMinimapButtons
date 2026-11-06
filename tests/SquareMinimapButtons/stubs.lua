@@ -19,7 +19,13 @@
 --   tukui, addonskins   true: these addons are enabled and loaded
 --   combat        InCombatLockdown()
 --   petBattle     C_PetBattles.IsInBattle()
---   newMail       HasNewMail()
+--   newMail       HasNewMail() (SetNewMail(v) changes it and fires UPDATE_PENDING_MAIL)
+--   elvui.queueStatus  true: ElvUI's queue module is loaded (frame ElvUIQueueStatus exists)
+--   retailGlobals true: PVEFrame, ShowUIPanel, HideUIPanel and GroupFinderFrame_ShowGroupFrame
+--                 exist (Retail; WoW Forever has none of them)
+--   missing       { GameTimeFrame = true, QueueStatusButton = true, Tracking = true }: these
+--                 frames of the default UI do not exist (Tracking: MinimapCluster.Tracking)
+--   noAtlasInfo   true: C_Texture.GetAtlasInfo knows no atlas
 --   noSecretAPI   true: no issecretvalue (clients without the secret system)
 --   savedVariables  initial value of SquareMinimapButtonsDB
 --
@@ -457,6 +463,7 @@ function Button:SetDisabledFontObject() end
 local Tooltip = setmetatable({}, { __index = Frame })
 function Tooltip:SetOwner(owner, anchor) local s = st(self); s.owner, s.anchor, s.lines = owner, anchor, {} end
 function Tooltip:GetOwner() return st(self).owner end
+function Tooltip:IsOwned(frame) local s = st(self); return s.shown and s.owner == frame or false end
 function Tooltip:ClearLines() st(self).lines = {} end
 function Tooltip:AddLine(text) local s = st(self); s.lines = s.lines or {}; s.lines[#s.lines + 1] = text end
 function Tooltip:AddDoubleLine(a, b) Tooltip.AddLine(self, tostring(a) .. " " .. tostring(b)) end
@@ -706,15 +713,116 @@ local function installDefaultUI(config)
     Minimap.ZoomOut:Hide()
     MinimapBackdrop = CreateFrame("Frame", "MinimapBackdrop", Minimap)
 
-    -- Calendar button: Forever version without the global GameTimeTexture
-    GameTimeFrame = CreateFrame("Button", "GameTimeFrame", MinimapCluster)
-    GameTimeFrame.StateTexture = GameTimeFrame:CreateTexture(nil, "ARTWORK")
-    GameTimeFrame.AddTexture = GameTimeFrame:CreateTexture(nil, "OVERLAY")
+    local missing = config.missing or {}
+    local isForever = WOW_PROJECT_ID == WOW_PROJECT_CAMELOT
+    local isRetail = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE
 
-    QueueStatusButton = CreateFrame("Button", "QueueStatusButton", UIParent)
-    QueueStatusButton:Hide()
+    -- Tracking: in WoW Forever the button's mixin replaces Show(shown) with
+    -- MinimapCluster.Tracking:SetShown(shown) and moves the indicator frame
+    -- (Blizzard_Minimap/Mainline/Minimap.lua MiniMapTrackingButtonMixin:Show); the Retail stubs keep
+    -- the plain Show of the widget.
+    if missing.Tracking then
+        MinimapCluster.Tracking = nil
+    elseif isForever then
+        MinimapCluster.Tracking.Background:SetAtlas("ui-hud-minimap-button")
+        MinimapCluster.Tracking.Button.Show = function(self, ...)
+            local shown = ...
+            STUB.calls.TrackingButtonShow = STUB.calls.TrackingButtonShow or {}
+            table.insert(STUB.calls.TrackingButtonShow, { n = select("#", ...), shown = shown })
+            MinimapCluster.Tracking:SetShown(shown)
+            STUB.calls.IndicatorFrameUpdatePosition = (STUB.calls.IndicatorFrameUpdatePosition or 0) + 1
+        end
+    end
+    if MinimapCluster.Tracking then
+        local button = MinimapCluster.Tracking.Button
+        button.log = {}
+        button:SetScript("OnMouseDown", function(self) self.log[#self.log + 1] = "OnMouseDown" end)
+        button:SetScript("OnMouseUp", function(self) self.log[#self.log + 1] = "OnMouseUp" end)
+        button:SetScript("OnEnter", function(self) self.log[#self.log + 1] = "OnEnter" end)
+        button:SetScript("OnLeave", function(self) self.log[#self.log + 1] = "OnLeave" end)
+    end
+
+    -- Calendar button, one version per client:
+    --   Forever (Camelot/GameTimeFrameTemplate.xml, Camelot/GameTimeFrame.lua): StateTexture and
+    --     AddTexture with the atlas ui-hud-minimap-calendar-button, no global GameTimeTexture (reading
+    --     that global raises an error and is counted in STUB.calls.GameTimeTextureAccess); on every
+    --     button state change Blizzard sets the atlas of StateTexture again and the alpha of
+    --     AddTexture (OnButtonStateChanged, played here by OnEnter/OnLeave);
+    --   Classic: the global texture GameTimeTexture in the button;
+    --   Retail: the button only (the addon does not handle it there).
+    GameTimeFrame, GameTimeTexture, QueueStatusButton = nil, nil, nil -- globals of the stub file itself
+    if not missing.GameTimeFrame then
+        GameTimeFrame = CreateFrame("Button", "GameTimeFrame", MinimapCluster)
+        GameTimeFrame.log = {}
+        GameTimeFrame:SetScript("OnClick", function(self) self.log[#self.log + 1] = "OnClick" end)
+        if isForever then
+            GameTimeFrame.StateTexture = GameTimeFrame:CreateTexture(nil, "ARTWORK")
+            GameTimeFrame.StateTexture:SetAtlas("ui-hud-minimap-calendar-button")
+            GameTimeFrame.AddTexture = GameTimeFrame:CreateTexture(nil, "ARTWORK")
+            GameTimeFrame.AddTexture:SetAtlas("ui-hud-minimap-calendar-button")
+            GameTimeFrame.AddTexture:Hide()
+            GameTimeFrame.AddTexture:SetAlpha(0)
+            local function onButtonStateChanged(self, over)
+                self.StateTexture:SetAtlas("ui-hud-minimap-calendar-button")
+                local addAlpha = over and 0.1 or 0
+                self.AddTexture:SetShown(addAlpha > 0)
+                self.AddTexture:SetAlpha(addAlpha)
+            end
+            GameTimeFrame:SetScript("OnEnter", function(self) self.log[#self.log + 1] = "OnEnter"; onButtonStateChanged(self, true) end)
+            GameTimeFrame:SetScript("OnLeave", function(self) self.log[#self.log + 1] = "OnLeave"; onButtonStateChanged(self, false) end)
+        elseif not isRetail then
+            GameTimeTexture = GameTimeFrame:CreateTexture("GameTimeTexture", "BACKGROUND")
+            GameTimeTexture:SetTexture("Interface\\Calendar\\UI-Calendar-Button")
+        end
+    end
+
+    -- Queue button (Blizzard_QueueStatusFrame/Mainline/QueueStatusFrame.xml:136): parent UIParent,
+    -- hidden until the player queues.
+    if not missing.QueueStatusButton then
+        QueueStatusButton = CreateFrame("Button", "QueueStatusButton", UIParent)
+        QueueStatusButton:SetSize(45, 45)
+        QueueStatusButton:SetPoint("CENTER", Minimap, "CENTER", -68, -68)
+        QueueStatusButton:Hide()
+        QueueStatusButton.log = {}
+        function QueueStatusButton:OnLeave() self.log[#self.log + 1] = "OnLeave" end
+        QueueStatusButton:SetScript("OnShow", function(self) self.log[#self.log + 1] = "OnShow" end)
+        QueueStatusButton:SetScript("OnHide", function(self) self.log[#self.log + 1] = "OnHide" end)
+        QueueStatusButton:SetScript("OnClick", function(self) self.log[#self.log + 1] = "OnClick" end)
+    end
 
     AddonCompartmentFrame = CreateFrame("Button", "AddonCompartmentFrame", MinimapCluster)
+
+    -- Reading the global GameTimeTexture in WoW Forever is an error (the frame does not exist there).
+    setmetatable(_G, nil)
+    if isForever then
+        setmetatable(_G, {
+            __index = function(_, key)
+                if key == "GameTimeTexture" then
+                    STUB.calls.GameTimeTextureAccess = (STUB.calls.GameTimeTextureAccess or 0) + 1
+                    error("GameTimeTexture does not exist in WoW Forever", 2)
+                end
+            end,
+        })
+    end
+
+    -- Retail group finder (absent in WoW Forever)
+    if config.retailGlobals then
+        PVEFrame = CreateFrame("Frame", "PVEFrame", UIParent)
+        PVEFrame:Hide()
+        function ShowUIPanel(frame)
+            STUB.calls.ShowUIPanel = STUB.calls.ShowUIPanel or {}
+            table.insert(STUB.calls.ShowUIPanel, frame)
+            frame:Show()
+        end
+        function HideUIPanel(frame)
+            STUB.calls.HideUIPanel = STUB.calls.HideUIPanel or {}
+            table.insert(STUB.calls.HideUIPanel, frame)
+            frame:Hide()
+        end
+        function GroupFinderFrame_ShowGroupFrame()
+            STUB.calls.GroupFinderFrame_ShowGroupFrame = (STUB.calls.GroupFinderFrame_ShowGroupFrame or 0) + 1
+        end
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -937,6 +1045,11 @@ local function installAddOns(config)
             STUB.calls.ElvUICreateMover.originPoint = { parent:GetPoint() }
         end
         ElvUI = { E, {}, {}, {} }
+        if config.elvui.queueStatus then
+            -- ElvUI's queue module (Modules/Misc/QueueStatus.lua LoadQueueStatus): holder of the
+            -- QueueStatusButton
+            ElvUIQueueStatus = CreateFrame("Frame", "ElvUIQueueStatus", UIParent)
+        end
         if config.elvui.frameAPI then
             for _, t in ipairs(FRAME_TYPES) do installElvUIFrameAPI(Methods[t]) end
         end
@@ -1060,7 +1173,19 @@ local function installUIFunctions()
     function UIFrameFadeOut(frame, duration, from, to) fade("OUT", frame, duration, from, to) end
 
     function ToggleGroupFinderFrame() STUB.calls.ToggleGroupFinderFrame = (STUB.calls.ToggleGroupFinderFrame or 0) + 1 end
-    function MinimapMailFrameUpdate() STUB.calls.MinimapMailFrameUpdate = (STUB.calls.MinimapMailFrameUpdate or 0) + 1 end
+    -- Blizzard_Minimap/Mainline/Minimap.lua MinimapMailFrameUpdate: fills GameTooltip with the latest
+    -- senders and shows it.
+    function MinimapMailFrameUpdate()
+        STUB.calls.MinimapMailFrameUpdate = (STUB.calls.MinimapMailFrameUpdate or 0) + 1
+        GameTooltip:AddLine("Unread mail")
+        GameTooltip:Show()
+    end
+    C_Texture = {
+        GetAtlasInfo = function(atlas)
+            if STUB.config.noAtlasInfo then return nil end
+            if atlas == "ui-hud-minimap-calendar-button" then return { width = 23, height = 23 } end
+        end,
+    }
     function GetMinimapShape() return "SQUARE" end
     function PlaySound() end
 
@@ -1145,6 +1270,12 @@ function StartClient()
     if pa and pa.dbAtLogin and not pa.noDB and ProjectAzilroka then ProjectAzilroka[1].db = STUB.paDB end
     AdvanceTime(0)
     FireEvent("PLAYER_ENTERING_WORLD", true, false)
+end
+
+-- New mail arrives or is read: HasNewMail() and the event UPDATE_PENDING_MAIL.
+function SetNewMail(hasMail)
+    STUB.newMail = hasMail and true or false
+    return FireEvent("UPDATE_PENDING_MAIL")
 end
 
 -- Moves the cursor drag of a frame to this place (see Frame:StopMovingOrSizing).
