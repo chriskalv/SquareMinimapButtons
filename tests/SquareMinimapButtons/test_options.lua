@@ -612,8 +612,6 @@ describe("profiles, Blizzard settings, dialog", function()
         config.savedVariables.profiles.Other = { IconSize = 40 }
         local SMB = fresh(config)
         local apply = spy(SMB, "ApplySettings")
-        SMB.data.UnregisterAllCallbacks(SMB)
-        SMB.data.RegisterCallback(SMB, "OnProfileChanged", "ApplySettings")
         local p = options().args.profiles
         p.handler:SetProfile({ "profiles", "choose" }, "Other")
         assert_eq(apply.n, 1)
