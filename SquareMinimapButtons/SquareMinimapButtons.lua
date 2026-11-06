@@ -182,7 +182,7 @@ function SMB:HandleBlizzardButtons()
 	-- the bar exists only after Initialize
 	if not SMB.Bar or not SMB.db.BarEnabled then return end
 	local Size = SMB.db.IconSize
-	local CreateFrame, GameTooltip, HasNewMail, MinimapMailFrameUpdate = _G.CreateFrame, _G.GameTooltip, _G.HasNewMail, _G.MinimapMailFrameUpdate
+	local CreateFrame, GameTooltip = _G.CreateFrame, _G.GameTooltip
 	local UIFrameFadeIn, UIFrameFadeOut = _G.UIFrameFadeIn, _G.UIFrameFadeOut
 
 	if SMB.db.MoveMail and not _G.SMB_MailFrame then
@@ -195,9 +195,11 @@ function SMB:HandleBlizzardButtons()
 		Frame.Icon:SetTexCoord(SMB:TexCoords())
 		Frame:EnableMouse(true)
 		Frame:HookScript('OnEnter', function(_self)
-			if HasNewMail() then
+			-- the mail globals are read on use, as in the original; the tooltip needs Blizzard's
+			-- MinimapMailFrameUpdate
+			if _G.HasNewMail() then
 				GameTooltip:SetOwner(_self, "ANCHOR_BOTTOMRIGHT")
-				MinimapMailFrameUpdate()
+				if _G.MinimapMailFrameUpdate then _G.MinimapMailFrameUpdate() end
 			end
 			SetClassColorBorder(_self)
 			if SMB.Bar:IsShown() and SMB.db.BarMouseOver then
@@ -215,10 +217,10 @@ function SMB:HandleBlizzardButtons()
 		Frame:RegisterEvent('UPDATE_PENDING_MAIL')
 		Frame:SetScript('OnEvent', function(_self, event)
 			if event == 'UPDATE_PENDING_MAIL' then
-				if HasNewMail() then
+				if _G.HasNewMail() then
 					_self.Icon:SetVertexColor(0, 1, 0)
-					if GameTooltip:IsOwned(_self) then
-						MinimapMailFrameUpdate()
+					if GameTooltip:IsOwned(_self) and _G.MinimapMailFrameUpdate then
+						_G.MinimapMailFrameUpdate()
 					end
 				else
 					_self.Icon:SetVertexColor(1, 1, 1)
@@ -226,7 +228,7 @@ function SMB:HandleBlizzardButtons()
 			end
 		end)
 
-		if HasNewMail() then Frame.Icon:SetVertexColor(0, 1, 0) end
+		if _G.HasNewMail() then Frame.Icon:SetVertexColor(0, 1, 0) end
 		if SMB.db.Shadows then SMB:CreateShadow(Frame) end
 
 		tinsert(SMB.Buttons, Frame)

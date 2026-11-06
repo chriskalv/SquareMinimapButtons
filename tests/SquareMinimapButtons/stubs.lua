@@ -23,8 +23,9 @@
 --   elvui.queueStatus  true: ElvUI's queue module is loaded (frame ElvUIQueueStatus exists)
 --   retailGlobals true: PVEFrame, ShowUIPanel, HideUIPanel and GroupFinderFrame_ShowGroupFrame
 --                 exist (Retail; WoW Forever has none of them)
---   missing       { GameTimeFrame = true, QueueStatusButton = true, Tracking = true }: these
---                 frames of the default UI do not exist (Tracking: MinimapCluster.Tracking)
+--   missing       { GameTimeFrame = true, QueueStatusButton = true, Tracking = true,
+--                 MinimapMailFrameUpdate = true }: these frames or functions of the default UI do
+--                 not exist (Tracking: MinimapCluster.Tracking)
 --   noAtlasInfo   true: C_Texture.GetAtlasInfo knows no atlas
 --   noSecretAPI   true: no issecretvalue (clients without the secret system)
 --   savedVariables  initial value of SquareMinimapButtonsDB
@@ -1180,6 +1181,7 @@ local function installUIFunctions()
         GameTooltip:AddLine("Unread mail")
         GameTooltip:Show()
     end
+    if (STUB.config.missing or {}).MinimapMailFrameUpdate then MinimapMailFrameUpdate = nil end
     C_Texture = {
         GetAtlasInfo = function(atlas)
             if STUB.config.noAtlasInfo then return nil end

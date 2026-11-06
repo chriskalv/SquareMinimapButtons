@@ -136,6 +136,25 @@ describe("missing frames, idempotence, guards", function()
         end
     end)
 
+    it("every combination of missing frames, in every client: no error, OnEnter/OnLeave work", function()
+        local kinds = { "GameTimeFrame", "QueueStatusButton", "Tracking" }
+        for _, id in ipairs({ FOREVER, RETAIL, CLASSIC }) do
+            for mask = 0, 7 do
+                local missing = {}
+                for bit, kind in ipairs(kinds) do
+                    if math.floor(mask / 2 ^ (bit - 1)) % 2 == 1 then missing[kind] = true end
+                end
+                local SMB = built(withProfile({ MoveQueue = true }, { projectID = id, missing = missing }))
+                for _, button in ipairs(SMB.Buttons) do
+                    local onEnter, onLeave = button:GetScript("OnEnter"), button:GetScript("OnLeave")
+                    if onEnter then onEnter(button) end
+                    if onLeave then onLeave(button) end
+                end
+                assert_eq(STUB.errors, {}, "client " .. id .. ", mask " .. mask)
+            end
+        end
+    end)
+
     it("a second call builds nothing twice and SMB.Buttons does not grow", function()
         local SMB = built(withProfile({ MoveQueue = true }, { projectID = FOREVER }))
         assert_eq(#SMB.Buttons, 4)
@@ -247,6 +266,31 @@ describe("mail (SMB_MailFrame)", function()
         assert_eq(STUB.calls.MinimapMailFrameUpdate, 2, "no update when the tooltip is closed")
     end)
 
+    it("without MinimapMailFrameUpdate: OnEnter and UPDATE_PENDING_MAIL raise no error", function()
+        built({ newMail = true, missing = { MinimapMailFrameUpdate = true } })
+        local Frame = SMB_MailFrame
+        assert_nil(MinimapMailFrameUpdate)
+        Frame:GetScript("OnEnter")(Frame)
+        assert_true(GameTooltip:GetOwner() == Frame)
+        SetNewMail(true)
+        assert_eq({ Frame.Icon:GetVertexColor() }, { 0, 1, 0, 1 })
+        Frame:GetScript("OnLeave")(Frame)
+        assert_eq(STUB.errors, {})
+    end)
+
+    it("reads HasNewMail and MinimapMailFrameUpdate on use, as the original does", function()
+        built()
+        local Frame = SMB_MailFrame
+        local calls = 0
+        HasNewMail = function() return true end
+        MinimapMailFrameUpdate = function() calls = calls + 1; GameTooltip:Show() end
+        Frame:GetScript("OnEnter")(Frame)
+        assert_eq(calls, 1)
+        FireEvent("UPDATE_PENDING_MAIL")
+        assert_eq({ Frame.Icon:GetVertexColor() }, { 0, 1, 0, 1 })
+        assert_eq(calls, 2)
+    end)
+
     it("OnEnter without mail: no tooltip, border in the class color", function()
         built()
         SMB_MailFrame:GetScript("OnEnter")(SMB_MailFrame)
@@ -286,7 +330,10 @@ describe("tracking", function()
         assert_true(Tracking:IsShown())
         SMB:HandleBlizzardButtons()
         assert_true(Tracking:IsShown(), "the tracking frame is not hidden")
-        assert_nil(STUB.calls.TrackingButtonShow, "the mixin's Show(shown) is not called")
+        -- Tracking:Show() or Button:Show(true) are both fine; the mixin's Show() without argument is not
+        for i, call in ipairs(STUB.calls.TrackingButtonShow or {}) do
+            assert_true(call.n > 0 and call.shown == true, "mixin Show call " .. i .. " shows the frame")
+        end
         assert_true(Button:GetParent() == SMB.Bar)
         assert_true(Button:IsShown())
         assert_eq(Tracking.Background:GetAlpha(), 0)
@@ -318,10 +365,23 @@ describe("tracking", function()
     end)
 
     it("Retail: shown with the plain Show of the original, child of the bar", function()
-        local SMB = built({ projectID = RETAIL })
+        local SMB = fresh({ projectID = RETAIL })
+        MinimapCluster.Tracking.Button:Hide()
+        SMB:HandleBlizzardButtons()
         assert_true(MinimapCluster.Tracking.Button:GetParent() == SMB.Bar)
+        assert_true(MinimapCluster.Tracking.Button:IsShown(), "Button:Show() ran")
         assert_true(MinimapCluster.Tracking:IsShown())
         assert_nil(STUB.calls.TrackingButtonShow)
+    end)
+
+    it("the button is moved into the bar by the build itself, not only by Update", function()
+        for _, id in ipairs({ FOREVER, RETAIL }) do
+            local SMB = fresh({ projectID = id })
+            SetCombat(true) -- Update waits for the end of combat
+            SMB:HandleBlizzardButtons()
+            assert_true(MinimapCluster.Tracking.Button:GetParent() == SMB.Bar, "client " .. id)
+            SetCombat(false)
+        end
     end)
 end)
 
