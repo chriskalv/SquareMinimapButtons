@@ -1,9 +1,11 @@
--- Test group 8 (options, package 5): the AceConfig tree after ProjectAzilroka's
--- Modules/SquareMinimapButtons.lua GetOptions (454-489) and Init.lua (profiles 618, reload dialog
--- 548-556, Blizzard settings and ElvUI options 639-653), with the changes of the port: hidden per
--- client with WoW Forever, the reload dialog when a built Blizzard button is turned off, MoveQueue
--- disabled while ElvUI's queue module holds the button, the group "Extensions", Blizzard buttons in
--- combat after combat, Blizzard settings with a profiles subcategory and ElvUI's options.
+-- Test group 8 (options, package 5, reworked in nachtrag 2): the AceConfig tree after
+-- ProjectAzilroka's Modules/SquareMinimapButtons.lua GetOptions (454-489) and Init.lua (profiles
+-- 618, reload dialog 548-556, Blizzard settings and ElvUI options 639-653), with the changes of the
+-- port: three tabs (General, Blizzard, Profiles), no Visibility and no group "Extensions" any more,
+-- the tracker glow toggle, hidden per client with WoW Forever, the reload dialog when a built
+-- Blizzard button is turned off, MoveQueue disabled while ElvUI's queue module holds the button,
+-- Blizzard buttons in combat after combat, Blizzard settings and ElvUI's options, and a layout model
+-- of AceConfigDialog/AceGUI that checks that the tabs General and Blizzard fit into the dialog.
 
 local FOREVER, RETAIL, CLASSIC = 18, 1, 2
 local APP = "SquareMinimapButtons"
@@ -17,8 +19,8 @@ end
 local function withProfile(values, config)
     config = config or {}
     config.savedVariables = {
-        profileKeys = { ["Zippy - Forever"] = "Zippy - Forever" },
-        profiles = { ["Zippy - Forever"] = values },
+        profileKeys = { ["Zippy - Forever"] = "Default" },
+        profiles = { Default = values },
     }
     return config
 end
@@ -82,17 +84,29 @@ local function keysOf(t)
     return keys
 end
 
-local MBB_KEYS = { "BarEnabled", "BarMouseOver", "Backdrop", "IconSize", "ButtonSpacing", "ButtonsPerRow", "Shadows", "ReverseDirection", "Visibility" }
+local MBB_KEYS = { "BarEnabled", "BarMouseOver", "Backdrop", "IconSize", "ButtonSpacing", "ButtonsPerRow", "Shadows", "ReverseDirection" }
+-- the Blizzard toggles that build buttons (TrackerGlow has its own setter)
 local BLIZZARD_KEYS = { "HideGarrison", "MoveGarrison", "MoveMail", "MoveGameTimeFrame", "MoveTracker", "MoveQueue" }
 local STRATA = { "BACKGROUND", "DIALOG", "FULLSCREEN", "FULLSCREEN_DIALOG", "HIGH", "LOW", "MEDIUM", "TOOLTIP" }
-local POINTS = { "BOTTOM", "BOTTOMLEFT", "BOTTOMRIGHT", "CENTER", "LEFT", "RIGHT", "TOP", "TOPLEFT", "TOPRIGHT" }
+-- options that nachtrag 2 removed, anywhere in the tree
+local REMOVED = { "Visibility", "Extensions", "MoverNote", "AnchorToMinimap", "Point", "RelativePoint", "X", "Y", "Lock", "IgnoreList" }
 
 -- a value of the right type that differs from the default
 local SAMPLE = {
     BarEnabled = false, BarMouseOver = true, Backdrop = false, IconSize = 30, ButtonSpacing = 4,
-    ButtonsPerRow = 3, Shadows = false, ReverseDirection = true, Visibility = "[combat] hide; show",
+    ButtonsPerRow = 3, Shadows = false, ReverseDirection = true,
     Strata = "HIGH", Level = 20,
 }
+
+-- every key in the tree (except inside the AceDBOptions group)
+local function allKeys(node, out)
+    out = out or {}
+    for key, child in pairs(node.args or {}) do
+        out[key] = true
+        if key ~= "profiles" then allKeys(child, out) end
+    end
+    return out
+end
 
 describe("registration", function()
     it("registers the table under the app name SquareMinimapButtons before Initialize", function()
@@ -116,13 +130,30 @@ describe("registration", function()
         for _, uiType in ipairs({ "dialog", "cmd", "dropdown" }) do
             assert_true(registry:GetOptionsTable(APP, uiType, "AceConfigDialog-3.0") == SMB.Options, uiType)
         end
-        assert_true(RunSlash("/zmb", ""))
+        assert_true(RunSlash("/smb", ""))
         assert_eq(STUB.settings.dialogOpened, { { APP } })
+    end)
+
+    it("passes the validation in Forever, Retail, Classic, with ElvUI (also its own tree) and in German", function()
+        local configs = {
+            { projectID = FOREVER }, { projectID = RETAIL }, { projectID = CLASSIC },
+            { elvui = { options = { loaded = true }, queueStatus = true } }, { tukui = true }, { locale = "deDE" },
+        }
+        for i, config in ipairs(configs) do
+            local SMB = fresh(config)
+            local registry = LibStub("AceConfigRegistry-3.0")
+            local ok, err = pcall(registry.ValidateOptionsTable, registry, SMB.Options, APP)
+            assert_true(ok, "config " .. i .. ": " .. tostring(err))
+            if config.elvui then
+                registry:ValidateOptionsTable(ElvUI[1].Options.args.SquareMinimapButtons, "ElvUI")
+            end
+            assert_eq(STUB.errors, {}, "config " .. i)
+        end
     end)
 
     it("the validation would catch a broken field (the check is real)", function()
         local SMB = fresh()
-        SMB.Options.args.General.args.MBB.args.Visibility.width = {}
+        SMB.Options.args.General.args.MBB.args.IconSize.width = {}
         local ok = pcall(function() LibStub("AceConfigRegistry-3.0"):ValidateOptionsTable(SMB.Options, APP) end)
         assert_false(ok)
     end)
@@ -136,66 +167,71 @@ describe("registration", function()
     it("registers once even if Start runs again", function()
         local SMB = fresh()
         SMB:RegisterOptions()
-        assert_eq(#STUB.settings.blizOptions, 2)
+        assert_eq(#STUB.settings.blizOptions, 1)
         assert_eq(STUB.errors, {})
     end)
 end)
 
-describe("structure (Bauplan 5.8, ProjectAzilroka GetOptions)", function()
-    it("root: title, description, Enable, General, Extensions, profiles, authors", function()
+describe("structure (nachtrag 2: three tabs)", function()
+    it("root: childGroups tab with General, Blizzard, Profiles in this order and nothing else", function()
         fresh()
         local o = options()
         assert_eq(o.type, "group")
         assert_eq(o.name, "Square Minimap Buttons")
         assert_eq(o.desc, "Minimap Button Bar / Minimap Button Skinning")
+        assert_eq(o.childGroups, "tab")
         assert_eq(type(o.get), "function")
         assert_eq(type(o.set), "function")
-        assert_eq(keysOf(o.args), { "AuthorHeader", "Authors", "Description", "Enable", "Extensions", "General", "PortAuthor", "profiles" })
-        assert_eq(o.args.Description.type, "description")
-        assert_eq(o.args.Description.name, "Minimap Button Bar / Minimap Button Skinning")
-        assert_eq(o.args.Description.order, 0)
-        assert_eq(o.args.Enable.type, "toggle")
-        assert_eq(o.args.Enable.name, "Enable")
-        assert_eq(o.args.Enable.order, 1)
-        assert_eq(o.args.General.order, 2)
-        assert_true(o.args.General.inline)
-        assert_eq(o.args.Extensions.order, 3)
-        assert_eq(o.args.AuthorHeader.type, "header")
-        assert_eq(o.args.AuthorHeader.name, "Authors:")
-        assert_eq(o.args.Authors.type, "description")
-        assert_eq(o.args.Authors.name, "Azilroka    Sinaris    Omega    Durc")
-        assert_eq(o.args.Authors.fontSize, "large")
-        assert_eq(o.args.PortAuthor.name, "WoW Forever port: Zippy")
-        assert_true(o.args.AuthorHeader.order < o.args.Authors.order and o.args.Authors.order < o.args.PortAuthor.order,
-            "authors, then the port line below them")
-        assert_true(o.args.PortAuthor.order < 0, "at the end, as in the original (negative order)")
+        assert_eq(keysOf(o.args), { "Blizzard", "General", "profiles" })
+        assert_eq({ o.args.General.order, o.args.Blizzard.order, o.args.profiles.order }, { 1, 2, 3 })
+        for key, tab in pairs(o.args) do
+            assert_eq(tab.type, "group", key)
+            assert_false(tab.inline, key .. " is a tab, not inline")
+        end
+        assert_eq({ o.args.General.name, o.args.Blizzard.name, o.args.profiles.name }, { "General", "Blizzard", "Profiles" })
     end)
 
-    it("General: MBB (order 1, inline), Blizzard (2, inline), Strata (3), Level (4)", function()
+    it("the tabs come in the order General, Blizzard, Profiles (AceConfigDialog sorts by order)", function()
+        fresh()
+        local o = options()
+        local tabs = {}
+        for key, tab in pairs(o.args) do tabs[#tabs + 1] = { key = key, order = tab.order } end
+        table.sort(tabs, function(a, b) return a.order < b.order end)
+        assert_eq({ tabs[1].key, tabs[2].key, tabs[3].key }, { "General", "Blizzard", "profiles" })
+    end)
+
+    it("General: description and authors at the top, then Enable, MBB (inline), Strata, Level", function()
         fresh()
         local g = options().args.General.args
-        assert_eq(keysOf(g), { "Blizzard", "Level", "MBB", "Strata" })
+        assert_eq(keysOf(g), { "AuthorHeader", "Authors", "Description", "Enable", "Level", "MBB", "PortAuthor", "Strata" })
+        local expected = {
+            { "Description", "description", 1 }, { "AuthorHeader", "header", 2 }, { "Authors", "description", 3 },
+            { "PortAuthor", "description", 4 }, { "Enable", "toggle", 5 }, { "MBB", "group", 6 },
+            { "Strata", "select", 7 }, { "Level", "range", 8 },
+        }
+        for _, e in ipairs(expected) do
+            assert_eq({ g[e[1]].type, g[e[1]].order }, { e[2], e[3] }, e[1])
+        end
+        assert_eq(g.Description.name, "Minimap Button Bar / Minimap Button Skinning")
+        assert_eq(g.AuthorHeader.name, "Authors:")
+        assert_eq(g.Authors.name, "Azilroka    Sinaris    Omega    Durc")
+        assert_eq(g.Authors.fontSize, "large")
+        assert_eq(g.PortAuthor.name, "WoW Forever port: Zippy")
+        assert_eq(g.PortAuthor.fontSize, "medium")
+        assert_eq(g.Enable.name, "Enable")
         assert_eq(g.MBB.name, "Minimap Buttons / Bar")
-        assert_eq(g.MBB.order, 1)
         assert_true(g.MBB.inline)
-        assert_eq(g.Blizzard.name, "Blizzard")
-        assert_eq(g.Blizzard.order, 2)
-        assert_true(g.Blizzard.inline)
-        assert_eq(g.Strata.type, "select")
         assert_eq(g.Strata.name, "Frame Strata")
-        assert_eq(g.Strata.order, 3)
         assert_eq(keysOf(g.Strata.values), STRATA)
         for key, label in pairs(g.Strata.values) do assert_eq(label, key) end
-        assert_eq(g.Level.type, "range")
         assert_eq(g.Level.name, "Frame Level")
-        assert_eq(g.Level.order, 4)
         assert_eq({ g.Level.min, g.Level.max, g.Level.step }, { 0, 255, 1 })
     end)
 
-    it("MBB: the toggles and ranges in the original order, Visibility at 12 (single line, double width)", function()
+    it("MBB: the toggles and ranges in the original order, no Visibility", function()
         fresh()
         local m = options().args.General.args.MBB.args
-        assert_eq(keysOf(m), { "Backdrop", "BarEnabled", "BarMouseOver", "ButtonSpacing", "ButtonsPerRow", "IconSize", "ReverseDirection", "Shadows", "Visibility" })
+        assert_eq(keysOf(m), { "Backdrop", "BarEnabled", "BarMouseOver", "ButtonSpacing", "ButtonsPerRow", "IconSize", "ReverseDirection", "Shadows" })
         local expected = {
             { "BarEnabled", "toggle", "Enable Bar", 1 },
             { "BarMouseOver", "toggle", "Bar MouseOver", 2 },
@@ -205,7 +241,6 @@ describe("structure (Bauplan 5.8, ProjectAzilroka GetOptions)", function()
             { "ButtonsPerRow", "range", "Buttons Per Row", 6 },
             { "Shadows", "toggle", "Shadows", 7 },
             { "ReverseDirection", "toggle", "Reverse Direction", 8 },
-            { "Visibility", "input", "Visibility", 12 },
         }
         for _, e in ipairs(expected) do
             local option = m[e[1]]
@@ -214,72 +249,66 @@ describe("structure (Bauplan 5.8, ProjectAzilroka GetOptions)", function()
         assert_eq({ m.IconSize.min, m.IconSize.max, m.IconSize.step }, { 12, 48, 1 })
         assert_eq({ m.ButtonSpacing.min, m.ButtonSpacing.max, m.ButtonSpacing.step }, { -1, 10, 1 })
         assert_eq({ m.ButtonsPerRow.min, m.ButtonsPerRow.max, m.ButtonsPerRow.step }, { 1, 100, 1 })
-        assert_eq(m.Visibility.width, "double")
-        assert_nil(m.Visibility.multiline, "single line")
     end)
 
-    it("Blizzard: six toggles without order (sorted by name, as in the original) and the group setter", function()
+    it("Blizzard: seven full-width toggles, the tracker glow directly under the tracker toggle", function()
         fresh()
-        local b = options().args.General.args.Blizzard
+        local b = options().args.Blizzard
         assert_eq(type(b.set), "function")
         assert_nil(b.get, "reads through the root getter")
-        assert_eq(keysOf(b.args), { "HideGarrison", "MoveGameTimeFrame", "MoveGarrison", "MoveMail", "MoveQueue", "MoveTracker" })
-        local names = {
-            HideGarrison = "Hide Garrison", MoveGarrison = "Move Garrison Icon", MoveMail = "Move Mail Icon",
-            MoveGameTimeFrame = "Move Game Time Frame", MoveTracker = "Move Tracker Icon", MoveQueue = "Move Queue Status Icon",
-        }
-        for key, name in pairs(names) do
-            assert_eq({ b.args[key].type, b.args[key].name }, { "toggle", name }, key)
-            assert_nil(b.args[key].order, key)
-        end
-    end)
-
-    it("Extensions: note, anchor, point, relative point, offsets, lock, ignore list", function()
-        fresh()
-        local e = options().args.Extensions
-        assert_eq(e.name, "Extensions")
-        assert_true(e.inline)
+        assert_eq(keysOf(b.args), { "HideGarrison", "MoveGameTimeFrame", "MoveGarrison", "MoveMail", "MoveQueue", "MoveTracker", "TrackerGlow" })
         local expected = {
-            { "MoverNote", "description", 0 }, { "AnchorToMinimap", "toggle", 1 }, { "Point", "select", 2 },
-            { "RelativePoint", "select", 3 }, { "X", "range", 4 }, { "Y", "range", 5 }, { "Lock", "toggle", 6 },
-            { "IgnoreList", "input", 7 },
+            { "HideGarrison", "Hide Garrison" }, { "MoveGarrison", "Move Garrison Icon" },
+            { "MoveGameTimeFrame", "Move Game Time Frame" }, { "MoveMail", "Move Mail Icon" },
+            { "MoveTracker", "Move Tracker Icon" }, { "TrackerGlow", "Glowing Tracker Icon when not tracking" },
+            { "MoveQueue", "Move Queue Status Icon" },
         }
-        assert_eq(#keysOf(e.args), #expected)
-        for _, x in ipairs(expected) do
-            assert_eq({ e.args[x[1]].type, e.args[x[1]].order }, { x[2], x[3] }, x[1])
+        for i, e in ipairs(expected) do
+            local option = b.args[e[1]]
+            assert_eq({ option.type, option.name, option.order, option.width }, { "toggle", e[2], i, "full" }, e[1])
         end
-        assert_eq(e.args.AnchorToMinimap.name, "Anchor to Minimap")
-        assert_eq(e.args.Lock.name, "Lock Bar")
-        assert_eq(e.args.IgnoreList.name, "Ignore List")
-        assert_eq(keysOf(e.args.Point.values), POINTS)
-        assert_eq(keysOf(e.args.RelativePoint.values), POINTS)
-        assert_eq({ e.args.X.min, e.args.X.max, e.args.X.step }, { -200, 200, 1 })
-        assert_eq({ e.args.Y.min, e.args.Y.max, e.args.Y.step }, { -200, 200, 1 })
-        assert_true(e.args.IgnoreList.multiline ~= nil and e.args.IgnoreList.multiline ~= false, "multiline")
-        assert_contains(e.args.IgnoreList.desc, "one frame name or Lua pattern per line")
-        assert_contains(e.args.IgnoreList.desc, "stays there until you reload")
+        assert_eq(b.args.TrackerGlow.order, b.args.MoveTracker.order + 1, "directly under MoveTracker")
+        assert_contains(b.args.TrackerGlow.desc, "Only takes effect when your character can track something.")
+        assert_eq(type(b.args.TrackerGlow.set), "function")
+        assert_true(b.args.TrackerGlow.set ~= b.set, "own setter: no Blizzard rebuild for the glow")
     end)
 
-    it("profiles: the AceDBOptions group of the addon's database, last in the tree", function()
+    it("no Visibility and no Extensions anywhere in the tree", function()
+        for _, config in ipairs({ { projectID = FOREVER }, { projectID = RETAIL }, { projectID = CLASSIC }, { elvui = {} } }) do
+            fresh(config)
+            local keys = allKeys(options())
+            for _, key in ipairs(REMOVED) do
+                assert_nil(keys[key], key .. " is gone")
+            end
+        end
+        local SMB = GetAddon()
+        assert_nil(SMB.IgnoreListToText)
+        assert_nil(SMB.TextToIgnoreList)
+        assert_nil(SMB.PointValues)
+    end)
+
+    it("profiles: the AceDBOptions group of the addon's database as the third tab", function()
         local SMB = fresh()
         local p = options().args.profiles
         assert_true(p == LibStub("AceDBOptions-3.0"):GetOptionsTable(SMB.data), "AceDBOptions table")
         assert_eq(p.type, "group")
-        assert_eq(p.order, -1)
+        assert_eq(p.order, 3)
         assert_eq(p.handler.db, SMB.data)
+        assert_eq(p.handler:GetCurrentProfile(), "Default")
     end)
 
     it("German: PA's texts (original spelling) and the new ones", function()
         fresh({ locale = "deDE" })
         local o = options()
-        assert_eq(o.args.Enable.name, "Aktivieren")
         assert_eq(o.args.General.name, "Allgemein")
-        assert_eq(o.args.General.args.Blizzard.args.HideGarrison.name, "Verstecke Garnision")
+        assert_eq(o.args.General.args.Enable.name, "Aktivieren")
+        assert_eq(o.args.Blizzard.args.HideGarrison.name, "Verstecke Garnision")
         assert_eq(o.args.General.args.Strata.name, "Fenster Schicht")
-        assert_eq(o.args.Extensions.name, "Erweiterungen")
-        assert_eq(o.args.AuthorHeader.name, "Autoren:")
-        assert_eq(o.args.PortAuthor.name, "Portierung für WoW Forever: Zippy")
-        assert_eq(STUB.settings.blizOptions[2][2], "Profile")
+        assert_eq(o.args.General.args.AuthorHeader.name, "Autoren:")
+        assert_eq(o.args.General.args.PortAuthor.name, "Portierung für WoW Forever: Zippy")
+        assert_eq(o.args.Blizzard.args.TrackerGlow.name, "Tracker-Symbol leuchtet, wenn nichts verfolgt wird")
+        assert_contains(o.args.Blizzard.args.TrackerGlow.desc, "Greift nur, wenn der Charakter etwas verfolgen kann.")
+        assert_eq(o.args.profiles.name, "Profile")
     end)
 end)
 
@@ -294,15 +323,12 @@ describe("getters and setters", function()
         assert_eq(getValue({ "General", "Level" }), 20)
         for _, key in ipairs(BLIZZARD_KEYS) do
             SMB.db[key] = (key == "HideGarrison")
-            assert_eq(getValue({ "General", "Blizzard", key }), key == "HideGarrison", key)
+            assert_eq(getValue({ "Blizzard", key }), key == "HideGarrison", key)
         end
         SMB.db.Enable = false
-        assert_eq(getValue({ "Enable" }), false)
-        local ext = { AnchorToMinimap = false, Point = "BOTTOM", RelativePoint = "TOP", X = -7, Y = 9, Lock = true }
-        for key, value in pairs(ext) do
-            SMB.db[key] = value
-            assert_eq(getValue({ "Extensions", key }), value, key)
-        end
+        assert_eq(getValue({ "General", "Enable" }), false)
+        SMB.db.TrackerGlow = false
+        assert_eq(getValue({ "Blizzard", "TrackerGlow" }), false)
     end)
 
     it("the getters read the current profile after a profile change", function()
@@ -333,7 +359,7 @@ describe("getters and setters", function()
         assert_eq(STUB.errors, {})
     end)
 
-    it("the setters take effect: icon size, strata and visibility reach the bar", function()
+    it("the setters take effect: icon size and strata reach the bar", function()
         local SMB = fresh()
         NewLibDBIconButton("One")
         SMB:GrabMinimapButtons(true)
@@ -341,8 +367,7 @@ describe("getters and setters", function()
         assert_eq({ SMB.Buttons[1]:GetSize() }, { 30, 30 })
         setValue({ "General", "Strata" }, "HIGH")
         assert_eq(SMB.Bar:GetFrameStrata(), "HIGH")
-        setValue({ "General", "MBB", "Visibility" }, "[combat] hide; show")
-        assert_eq(STUB.stateDrivers[SMB.Bar].visibility, "[combat] hide; show")
+        assert_eq(STUB.stateDriverLog, {}, "no visibility driver")
     end)
 
     it("every Blizzard setter writes db and calls HandleBlizzardButtons exactly once", function()
@@ -351,7 +376,7 @@ describe("getters and setters", function()
             for _, key in ipairs(BLIZZARD_KEYS) do
                 local blizzard = spy(SMB, "HandleBlizzardButtons")
                 local value = not SMB.db[key]
-                setValue({ "General", "Blizzard", key }, value)
+                setValue({ "Blizzard", key }, value)
                 assert_eq(SMB.db[key], value, key .. " written, client " .. id)
                 assert_eq(blizzard.n, 1, key .. ": one HandleBlizzardButtons, client " .. id)
                 blizzard.restore()
@@ -365,7 +390,7 @@ describe("Enable", function()
     it("off with the bar built shows the reload dialog SQUAREMINIMAPBUTTONS_RL", function()
         local SMB = fresh()
         assert_true(SMB.Bar ~= nil)
-        setValue({ "Enable" }, false)
+        setValue({ "General", "Enable" }, false)
         assert_eq(SMB.db.Enable, false)
         assert_eq(STUB.popups, { "SQUAREMINIMAPBUTTONS_RL" })
         StaticPopupDialogs.SQUAREMINIMAPBUTTONS_RL.OnAccept()
@@ -377,7 +402,7 @@ describe("Enable", function()
         assert_nil(SMB.Bar)
         assert_false(SMB.isEnabled)
         local initialize = spy(SMB, "Initialize")
-        setValue({ "Enable" }, true)
+        setValue({ "General", "Enable" }, true)
         assert_eq(initialize.n, 1)
         assert_true(SMB.Bar ~= nil, "the bar exists")
         assert_true(SMB.isEnabled)
@@ -391,16 +416,16 @@ describe("Enable", function()
 
     it("off without a bar does nothing (as in the original)", function()
         local SMB = fresh(withProfile({ Enable = false }))
-        setValue({ "Enable" }, false)
+        setValue({ "General", "Enable" }, false)
         assert_eq(STUB.popups, {})
         assert_nil(SMB.Bar)
     end)
 
     it("on again while the bar exists rebuilds it without a dialog", function()
         local SMB = fresh()
-        setValue({ "Enable" }, false)
+        setValue({ "General", "Enable" }, false)
         local update, initialize = spy(SMB, "Update"), spy(SMB, "Initialize")
-        setValue({ "Enable" }, true)
+        setValue({ "General", "Enable" }, true)
         assert_eq(update.n, 1)
         assert_eq(initialize.n, 0)
         assert_eq(STUB.popups, { "SQUAREMINIMAPBUTTONS_RL" }, "only the first dialog")
@@ -413,7 +438,7 @@ describe("Blizzard buttons: reload dialog and build", function()
         SMB:HandleBlizzardButtons()
         for _, key in ipairs({ "MoveMail", "MoveTracker", "MoveGameTimeFrame" }) do
             STUB.popups = {}
-            setValue({ "General", "Blizzard", key }, false)
+            setValue({ "Blizzard", key }, false)
             assert_eq(STUB.popups, { "SQUAREMINIMAPBUTTONS_RL" }, key)
         end
         assert_eq(#SMB.Buttons, 3, "nothing is taken out")
@@ -423,14 +448,14 @@ describe("Blizzard buttons: reload dialog and build", function()
         local SMB = fresh(withProfile({ MoveQueue = true }))
         SMB:HandleBlizzardButtons()
         assert_true(QueueStatusButton.SMB)
-        setValue({ "General", "Blizzard", "MoveQueue" }, false)
+        setValue({ "Blizzard", "MoveQueue" }, false)
         assert_eq(STUB.popups, { "SQUAREMINIMAPBUTTONS_RL" })
     end)
 
     it("turning off a button that is not built shows no dialog", function()
         local SMB = fresh()
         -- before the 7 second timer: nothing is built yet
-        setValue({ "General", "Blizzard", "MoveMail" }, false)
+        setValue({ "Blizzard", "MoveMail" }, false)
         assert_eq(STUB.popups, {})
         assert_nil(_G.SMB_MailFrame)
         assert_eq(SMB.db.MoveMail, false)
@@ -438,15 +463,15 @@ describe("Blizzard buttons: reload dialog and build", function()
         ReloadAddon({ projectID = RETAIL })
         StartClient()
         GetAddon():HandleBlizzardButtons()
-        setValue({ "General", "Blizzard", "MoveGarrison" }, false)
-        setValue({ "General", "Blizzard", "HideGarrison" }, false)
+        setValue({ "Blizzard", "MoveGarrison" }, false)
+        setValue({ "Blizzard", "HideGarrison" }, false)
         assert_eq(STUB.popups, {})
     end)
 
     it("turning on builds the button at once", function()
         local SMB = fresh()
         assert_false(SMB.db.MoveQueue, "off by default in Forever")
-        setValue({ "General", "Blizzard", "MoveQueue" }, true)
+        setValue({ "Blizzard", "MoveQueue" }, true)
         assert_true(_G.SMB_QueueFrame ~= nil, "queue frame built")
         assert_true(QueueStatusButton:GetParent() == SMB.Bar)
         assert_true(_G.SMB_QueueFrame:GetParent() == SMB.Bar)
@@ -459,7 +484,7 @@ describe("hidden and disabled per client", function()
     local function hiddenMap()
         local map = {}
         for _, key in ipairs(BLIZZARD_KEYS) do
-            map[key] = call("hidden", { "General", "Blizzard", key }) and true or false
+            map[key] = call("hidden", { "Blizzard", key }) and true or false
         end
         return map
     end
@@ -482,21 +507,21 @@ describe("hidden and disabled per client", function()
     it("the garrison toggles disable each other (original 480-481)", function()
         local SMB = fresh({ projectID = RETAIL })
         SMB.db.MoveGarrison, SMB.db.HideGarrison = true, false
-        assert_true(call("disabled", { "General", "Blizzard", "HideGarrison" }))
-        assert_false(call("disabled", { "General", "Blizzard", "MoveGarrison" }))
+        assert_true(call("disabled", { "Blizzard", "HideGarrison" }))
+        assert_false(call("disabled", { "Blizzard", "MoveGarrison" }))
         SMB.db.MoveGarrison, SMB.db.HideGarrison = false, true
-        assert_false(call("disabled", { "General", "Blizzard", "HideGarrison" }))
-        assert_true(call("disabled", { "General", "Blizzard", "MoveGarrison" }))
+        assert_false(call("disabled", { "Blizzard", "HideGarrison" }))
+        assert_true(call("disabled", { "Blizzard", "MoveGarrison" }))
     end)
 
     it("MoveQueue is disabled with a hint while ElvUI's queue module holds the button", function()
         for _, id in ipairs({ FOREVER, RETAIL }) do
             local SMB = fresh({ projectID = id, elvui = { queueStatus = true } })
-            assert_true(call("disabled", { "General", "Blizzard", "MoveQueue" }), "before the build, client " .. id)
+            assert_true(call("disabled", { "Blizzard", "MoveQueue" }), "before the build, client " .. id)
             SMB:HandleBlizzardButtons()
             assert_true(SMB.queueLocked)
-            assert_true(call("disabled", { "General", "Blizzard", "MoveQueue" }), "client " .. id)
-            assert_eq(call("desc", { "General", "Blizzard", "MoveQueue" }), "Disabled while ElvUI's queue status mover is active.")
+            assert_true(call("disabled", { "Blizzard", "MoveQueue" }), "client " .. id)
+            assert_eq(call("desc", { "Blizzard", "MoveQueue" }), "Disabled while ElvUI's queue status mover is active.")
         end
     end)
 
@@ -504,104 +529,226 @@ describe("hidden and disabled per client", function()
         local SMB = fresh({ elvui = {} })
         SMB:HandleBlizzardButtons()
         assert_false(SMB.queueLocked)
-        assert_false(call("disabled", { "General", "Blizzard", "MoveQueue" }))
-        assert_nil(call("desc", { "General", "Blizzard", "MoveQueue" }))
+        assert_false(call("disabled", { "Blizzard", "MoveQueue" }))
+        assert_nil(call("desc", { "Blizzard", "MoveQueue" }))
         SMB.queueLocked = true
-        assert_true(call("disabled", { "General", "Blizzard", "MoveQueue" }))
+        assert_true(call("disabled", { "Blizzard", "MoveQueue" }))
     end)
 end)
 
-describe("extensions", function()
-    it("anchor options write db and call ApplyBarPosition once; the bar follows", function()
-        local SMB = fresh()
-        local values = { Point = "BOTTOMLEFT", RelativePoint = "TOPRIGHT", X = 12, Y = -34 }
-        for _, key in ipairs({ "Point", "RelativePoint", "X", "Y" }) do
-            local apply, update = spy(SMB, "ApplyBarPosition"), spy(SMB, "Update")
-            setValue({ "Extensions", key }, values[key])
-            assert_eq(SMB.db[key], values[key], key)
-            assert_eq(apply.n, 1, key)
-            assert_eq(update.n, 0, key)
-            apply.restore()
-            update.restore()
+-- Layout model of the own dialog after the Ace3 sources in Libs/Ace3 (AceConfigDialog-3.0 and
+-- AceGUI-3.0); the stubs draw no widgets, so the heights are taken from the code:
+--   Frame (AceGUIContainer-Frame.lua OnWidthSet/OnHeightSet): content = width - 34, height - 57
+--   TabGroup (AceGUIContainer-TabGroup.lua): content width - 60; borderoffset 10 + 20 per tab row
+--     (no title), content height = height - (borderoffset + 23), so - 53 with one row of tabs;
+--     the root group with childGroups 'tab' gets no scroll frame, the TabGroup fills the frame
+--     (height "fill"), and FeedGroup puts each tab's content into a ScrollFrame
+--   ScrollFrame: the full content area, minus 20 for the scroll bar only when it is needed
+--   InlineGroup (AceGUIContainer-InlineGroup.lua): content width - 20, height = content + 40
+--   Flow layout (AceGUI-3.0.lua): rows packed left to right, 3 between rows and after the last;
+--     a control offsets by its alignoffset (or half its height) when it shares a row
+--   CheckBox 24 (no inline description), Slider 44 (alignoffset 25), Dropdown with label 40
+--     (alignoffset 26), Heading 18, Label = string height (at least 1)
+--   AceConfigDialog: width_multiplier 170 for controls without width, "full" and descriptions and
+--     headers fill the row
+-- The font heights of the labels are estimated generously: small 12, medium 14, large 18 per line,
+-- a line holds width / (0.6 * font size) characters.
+local FONT = { small = { 10, 12 }, medium = { 12, 14 }, large = { 16, 18 } }
+local WIDTH_MULTIPLIER = 170
+
+local function textOf(value, info)
+    if type(value) == "function" then return value(info) end
+    return value
+end
+
+local function labelHeight(text, fontSize, width)
+    local font = FONT[fontSize] or FONT.small
+    local perLine = math.max(1, math.floor(width / (0.6 * font[1])))
+    local lines = math.max(1, math.ceil(#(text or "") / perLine))
+    return lines * font[2]
+end
+
+-- flow layout of the visible options of a group; returns the height and a list of
+-- { key, bottom } with the bottom edge of every control (relative to the top of the content)
+local function flowGroup(group, width, path, top, bottoms)
+    local keys = {}
+    for key, option in pairs(group.args) do keys[#keys + 1] = key end
+    table.sort(keys, function(a, b)
+        local oa, ob = group.args[a].order or 100, group.args[b].order or 100
+        if oa ~= ob then return oa < ob end
+        return a < b
+    end)
+    local height, usedwidth, rowheight, rowoffset, first = 0, 0, 0, 0, true
+    local row = {}
+    local function closeRow()
+        for _, key in ipairs(row) do bottoms[#bottoms + 1] = { key, top + height + rowheight } end
+        row = {}
+    end
+    for _, key in ipairs(keys) do
+        local option = group.args[key]
+        local info = {}
+        for i, k in ipairs(path) do info[i] = k end
+        info[#info + 1] = key
+        if not textOf(option.hidden, info) then
+            local fh, fw, fo, fill
+            if option.type == "group" then
+                fill = true
+                fw = width
+                local inner = {}
+                local innerHeight = flowGroup(option, width - 20, info, top + height + 10, inner)
+                fh = innerHeight + 40
+                for _, b in ipairs(inner) do bottoms[#bottoms + 1] = b end
+            elseif option.type == "description" then
+                fill = true
+                fw = width
+                fh = labelHeight(textOf(option.name, info), option.fontSize, width)
+            elseif option.type == "header" then
+                fill, fw, fh = true, width, 18
+            else
+                if option.type == "toggle" then fh = 24
+                elseif option.type == "range" then fh, fo = 44, 25
+                elseif option.type == "select" then fh, fo = 40, 26
+                else error("no height for type " .. tostring(option.type)) end
+                fill = option.width == "full"
+                fw = fill and width or WIDTH_MULTIPLIER
+            end
+            fo = fo or fh / 2
+            if first then
+                rowheight, rowoffset, usedwidth, first = fh, fo, fw, false
+            elseif usedwidth == 0 or fw + usedwidth > width or fill then
+                closeRow()
+                height = height + rowheight + 3
+                rowheight, rowoffset, usedwidth = fh, fo, fw
+            else
+                rowoffset = math.max(rowoffset, fo)
+                rowheight = math.max(rowheight, rowoffset + fh / 2)
+                usedwidth = usedwidth + fw
+            end
+            row[#row + 1] = key
+            if fill then usedwidth, rowheight, rowoffset = 0, fh, fo end
         end
-        local point, relativeTo, relativePoint, x, y = SMB.Bar:GetPoint()
-        assert_eq({ point, relativePoint, x, y }, { "BOTTOMLEFT", "TOPRIGHT", 12, -34 })
-        assert_true(relativeTo == Minimap)
-    end)
+    end
+    closeRow()
+    return height + rowheight + 3
+end
 
-    it("AnchorToMinimap off: the bar moves to its free position and can be dragged", function()
-        local SMB = fresh()
-        assert_false(SMB:CanDragBar())
-        local apply = spy(SMB, "ApplyBarPosition")
-        setValue({ "Extensions", "AnchorToMinimap" }, false)
-        assert_eq(apply.n, 1)
-        local point, relativeTo = SMB.Bar:GetPoint()
-        assert_eq(point, "RIGHT")
-        assert_true(relativeTo == UIParent)
-        assert_true(SMB:CanDragBar())
-        assert_true(call("disabled", { "Extensions", "Point" }), "point only with the anchor")
-        assert_false(call("disabled", { "Extensions", "AnchorToMinimap" }))
-    end)
+-- the area of a tab in the own dialog and the flow height of the tab's content
+local function measureTab(key, width, height)
+    local o = options()
+    local tabWidth, tabHeight = width - 34 - 60, height - 57 - 53
+    local bottoms = {}
+    local needed = flowGroup(o.args[key], tabWidth, { key }, 0, bottoms)
+    return needed, tabHeight, tabWidth, bottoms
+end
 
-    it("Lock: CanDragBar false, ApplyBarPosition ends a drag in progress", function()
-        local SMB = fresh(withProfile({ AnchorToMinimap = false }))
-        SMB:OnDragStart()
-        assert_true(SMB.barMoving)
-        setValue({ "Extensions", "Lock" }, true)
-        assert_eq(SMB.db.Lock, true)
-        assert_false(SMB:CanDragBar())
-        assert_nil(SMB.barMoving, "drag ended")
-        setValue({ "Extensions", "Lock" }, false)
-        assert_true(SMB:CanDragBar())
-    end)
+describe("layout of the dialog (nachtrag 2: nothing reaches past the frame)", function()
+    local configs = {
+        { name = "Forever", config = { projectID = FOREVER } },
+        { name = "Retail", config = { projectID = RETAIL } },
+        { name = "Classic", config = { projectID = CLASSIC } },
+        { name = "ElvUI", config = { elvui = { queueStatus = true } } },
+        { name = "German", config = { locale = "deDE" } },
+    }
 
-    it("IgnoreList: text <-> list (blank lines, spaces, patterns, duplicates)", function()
-        local SMB = fresh()
-        setValue({ "Extensions", "IgnoreList" }, "  Foo  \n\n\nLibDBIcon10_.*\r\n   \n\tBar\nFoo\n")
-        assert_eq(SMB.db.IgnoreList, { "Foo", "LibDBIcon10_.*", "Bar" })
-        assert_eq(getValue({ "Extensions", "IgnoreList" }), "Foo\nLibDBIcon10_.*\nBar")
-        setValue({ "Extensions", "IgnoreList" }, "")
-        assert_eq(SMB.db.IgnoreList, {})
-        assert_eq(getValue({ "Extensions", "IgnoreList" }), "")
-        SMB.db.IgnoreList = { "B", Z = true, A = true } -- set form is read too
-        assert_eq(getValue({ "Extensions", "IgnoreList" }), "B\nA\nZ")
-        assert_eq(SMB:TextToIgnoreList(nil), {})
-        assert_eq(SMB:IgnoreListToText(nil), "")
-    end)
-
-    it("IgnoreList: the setter scans again (GrabMinimapButtons(true)); built buttons stay", function()
-        local SMB = fresh()
-        local old = NewLibDBIconButton("Old")
-        SMB:GrabMinimapButtons(true)
-        local newOne = NewLibDBIconButton("NewOne")
-        local other = NewLibDBIconButton("Other")
-        local grab = spy(SMB, "GrabMinimapButtons")
-        setValue({ "Extensions", "IgnoreList" }, "LibDBIcon10_New.*\nLibDBIcon10_Old")
-        assert_eq(grab.n, 1)
-        assert_eq(grab.args[1], { true })
-        assert_nil(newOne.isSkinned, "pattern keeps the new button on the minimap")
-        assert_true(other.isSkinned, "others are grabbed")
-        assert_true(old:GetParent() == SMB.Bar, "a button already in the bar stays until the reload")
-    end)
-
-    it("without a mover: note hidden, anchor options enabled", function()
-        fresh()
-        assert_true(call("hidden", { "Extensions", "MoverNote" }))
-        for _, key in ipairs({ "AnchorToMinimap", "Point", "RelativePoint", "X", "Y" }) do
-            assert_false(call("disabled", { "Extensions", key }), key)
+    it("General and Blizzard fit into the tab area of the default size without a scroll bar", function()
+        for _, c in ipairs(configs) do
+            local SMB = fresh(c.config)
+            for _, key in ipairs({ "General", "Blizzard" }) do
+                local needed, available, _, bottoms = measureTab(key, SMB.DialogWidth, SMB.DialogHeight)
+                assert_true(needed <= available, string.format("%s, %s: %d needed, %d available", c.name, key, needed, available))
+                for _, b in ipairs(bottoms) do
+                    assert_true(b[2] <= available, string.format("%s, %s: %s ends at %d of %d", c.name, key, b[1], b[2], available))
+                end
+            end
         end
-        assert_false(call("disabled", { "Extensions", "Lock" }) or false)
     end)
 
-    it("with an ElvUI or Tukui mover: note shown, anchor options disabled", function()
+    it("the measured heights in Forever (README, Options dialog)", function()
+        local SMB = fresh({ projectID = FOREVER })
+        local general, available, width = measureTab("General", SMB.DialogWidth, SMB.DialogHeight)
+        local blizzard = measureTab("Blizzard", SMB.DialogWidth, SMB.DialogHeight)
+        assert_eq({ general, blizzard, available, width }, { 299, 135, 450, 546 })
+        fresh({ projectID = RETAIL })
+        assert_eq((measureTab("Blizzard", SMB.DialogWidth, SMB.DialogHeight)), 162, "Retail: six toggles")
+    end)
+
+    it("three controls of 170 fit in a row of the tab and of the inline group MBB", function()
+        local SMB = fresh()
+        local _, _, width = measureTab("General", SMB.DialogWidth, SMB.DialogHeight)
+        assert_true(3 * WIDTH_MULTIPLIER <= width - 20, "MBB: three per row")
+    end)
+
+    it("at least the sum of all widget heights of General and Blizzard is below the dialog height", function()
+        local SMB = fresh({ projectID = RETAIL }) -- the most Blizzard toggles
+        local o = options()
+        local function sum(group, path)
+            local total = 0
+            for key, option in pairs(group.args) do
+                local info = {}
+                for i, k in ipairs(path) do info[i] = k end
+                info[#info + 1] = key
+                if not textOf(option.hidden, info) then
+                    if option.type == "group" then total = total + 40 + sum(option, info)
+                    elseif option.type == "toggle" then total = total + 24
+                    elseif option.type == "range" then total = total + 44
+                    elseif option.type == "select" then total = total + 40
+                    elseif option.type == "header" then total = total + 18
+                    else total = total + labelHeight(textOf(option.name, info), option.fontSize, 546) end
+                end
+            end
+            return total
+        end
+        local general, blizzard = sum(o.args.General, { "General" }), sum(o.args.Blizzard, { "Blizzard" })
+        assert_true(general < SMB.DialogHeight, "General " .. general)
+        assert_true(blizzard < SMB.DialogHeight, "Blizzard " .. blizzard)
+    end)
+
+    it("the old one-page tree did not fit: the model reproduces the overflow of the screenshot", function()
+        -- the tree before nachtrag 2 at 700 x 620: root without a scroll frame (childGroups 'tab'
+        -- with the only tab Profiles), so everything above the TabGroup counted against the frame
+        local SMB = fresh()
+        local old = {
+            args = {
+                Description = { type = "description", name = SMB.Description, order = 0 },
+                Enable = { type = "toggle", order = 1 },
+                General = { type = "group", order = 2, args = {
+                    MBB = SMB.Options.args.General.args.MBB,
+                    Blizzard = { type = "group", order = 2, args = {
+                        MoveMail = { type = "toggle" }, MoveGameTimeFrame = { type = "toggle" },
+                        MoveTracker = { type = "toggle" }, MoveQueue = { type = "toggle" },
+                    } },
+                    Strata = { type = "select", order = 3 }, Level = { type = "range", order = 4 },
+                } },
+                Extensions = { type = "group", order = 3, args = {
+                    AnchorToMinimap = { type = "toggle", order = 1, width = "full" },
+                    Point = { type = "select", order = 2 }, RelativePoint = { type = "select", order = 3 },
+                    X = { type = "range", order = 4 }, Y = { type = "range", order = 5 },
+                    Lock = { type = "toggle", order = 6, width = "full" },
+                    IgnoreList = { type = "select", order = 7 }, -- stands in for the 6-line input (much higher)
+                } },
+                AuthorHeader = { type = "header", order = 96 },
+                Authors = { type = "description", name = SMB.Authors, order = 97, fontSize = "large" },
+                PortAuthor = { type = "description", name = "WoW Forever port: Zippy", order = 98, fontSize = "medium" },
+            },
+        }
+        local above = flowGroup(old, 700 - 34, {}, 0, {})
+        local frameContent = 620 - 57
+        local tabMinimum = 53 + 1 -- the TabGroup with the Profiles tab below needs at least its border
+        assert_true(above + tabMinimum > frameContent, string.format("%d + %d > %d", above, tabMinimum, frameContent))
+    end)
+end)
+
+describe("removed options keep the bar where it was", function()
+    it("the bar stays anchored TOPLEFT +1/-1 at the minimap and cannot be dragged by default", function()
+        local SMB = fresh()
+        assert_eq({ SMB.Bar:GetPoint() }, { "TOPLEFT", Minimap, "TOPLEFT", 1, -1 })
+        assert_false(SMB:CanDragBar())
+    end)
+
+    it("ElvUI and Tukui movers stay", function()
         for _, config in ipairs({ { elvui = {} }, { tukui = true } }) do
             local SMB = fresh(config)
             assert_true(SMB.barMover ~= nil)
-            assert_false(call("hidden", { "Extensions", "MoverNote" }))
-            assert_eq(call("name", { "Extensions", "MoverNote" }), "The ElvUI or Tukui mover holds the position of the bar, so the anchor options are disabled.")
-            for _, key in ipairs({ "AnchorToMinimap", "Point", "RelativePoint", "X", "Y" }) do
-                assert_true(call("disabled", { "Extensions", key }), key .. " with " .. SMB.barMover)
-            end
         end
     end)
 end)
@@ -618,20 +765,20 @@ describe("profiles, Blizzard settings, dialog", function()
         assert_eq(SMB.db.IconSize, 40)
     end)
 
-    it("AddToBlizOptions twice: the category and the profiles as its subcategory", function()
+    it("AddToBlizOptions once: one category with the three tabs (no profiles subcategory any more)", function()
         local SMB = fresh()
-        assert_eq(STUB.settings.blizOptions, {
-            { APP, "Square Minimap Buttons", false },
-            { APP, "Profiles", "Square Minimap Buttons", "profiles" },
-        })
-        assert_eq(#STUB.settings.categories, 2)
-        local main, sub = STUB.settings.categories[1], STUB.settings.categories[2]
+        assert_eq(STUB.settings.blizOptions, { { APP, "Square Minimap Buttons", false } })
+        assert_eq(#STUB.settings.categories, 1)
+        local main = STUB.settings.categories[1]
         assert_eq(main.name, "Square Minimap Buttons")
-        assert_eq(sub.name, "Profiles")
-        assert_true(sub.parent == main, "subcategory of the addon's category")
         assert_eq(STUB.settings.registered, { main })
         assert_eq(SMB.SettingsCategoryID, main.ID)
-        assert_eq(STUB.settings.defaultSize, { { APP, 700, 620 } })
+    end)
+
+    it("SetDefaultSize 640 x 560", function()
+        local SMB = fresh()
+        assert_eq(STUB.settings.defaultSize, { { APP, 640, 560 } })
+        assert_eq({ SMB.DialogWidth, SMB.DialogHeight }, { 640, 560 })
     end)
 
     it("without the Settings API only the dialog is registered", function()
@@ -643,11 +790,12 @@ describe("profiles, Blizzard settings, dialog", function()
         assert_eq(STUB.errors, {})
     end)
 
-    it("/zmb and /zippyminimap open the dialog", function()
+    it("/smb, /squareminimap and /squareminimapbuttons open the dialog", function()
         fresh()
-        RunSlash("/zmb", "")
-        RunSlash("/zippyminimap", "  ")
-        assert_eq(STUB.settings.dialogOpened, { { APP }, { APP } })
+        RunSlash("/smb", "")
+        RunSlash("/squareminimap", "  ")
+        RunSlash("/squareminimapbuttons", "")
+        assert_eq(STUB.settings.dialogOpened, { { APP }, { APP }, { APP } })
         assert_eq(ChatContains("The options are not available yet."), 0)
     end)
 
@@ -661,16 +809,17 @@ describe("profiles, Blizzard settings, dialog", function()
         local SMB = fresh()
         local cmd = LibStub("AceConfigCmd-3.0")
         local update = spy(SMB, "Update")
-        -- inline groups are flattened on the command line
-        cmd:HandleCommand("zmbtest", APP, "iconsize 30")
+        -- tabs are sub-commands, inline groups are flattened on the command line
+        cmd:HandleCommand("smbtest", APP, "general iconsize 30")
         assert_eq(SMB.db.IconSize, 30)
         assert_eq(update.n, 1)
         local blizzard = spy(SMB, "HandleBlizzardButtons")
-        cmd:HandleCommand("zmbtest", APP, "movequeue on")
+        cmd:HandleCommand("smbtest", APP, "blizzard movequeue on")
         assert_eq(SMB.db.MoveQueue, true)
         assert_eq(blizzard.n, 1)
-        cmd:HandleCommand("zmbtest", APP, "x 25")
-        assert_eq(SMB.db.X, 25)
+        cmd:HandleCommand("smbtest", APP, "blizzard trackerglow off")
+        assert_eq(SMB.db.TrackerGlow, false)
+        assert_eq(blizzard.n, 1, "the glow builds nothing")
         assert_eq(STUB.errors, {})
     end)
 end)
@@ -683,8 +832,9 @@ describe("ElvUI options (LibElvUIPlugin)", function()
         assert_eq(group.name, "Square Minimap Buttons")
         assert_eq(group.childGroups, "tab")
         assert_nil(group.args.profiles, "without the profiles")
-        assert_true(group.args.General == SMB.Options.args.General, "the same groups")
-        assert_true(group.args.Extensions == SMB.Options.args.Extensions)
+        assert_true(group.args.General == SMB.Options.args.General, "the same tabs")
+        assert_true(group.args.Blizzard == SMB.Options.args.Blizzard)
+        assert_eq(keysOf(group.args), { "Blizzard", "General" })
         assert_true(group.get == SMB.Options.get and group.set == SMB.Options.set, "the same getter and setter")
         LibStub("AceConfigRegistry-3.0"):ValidateOptionsTable(group, "ElvUI")
     end
@@ -734,8 +884,8 @@ describe("combat", function()
         local SMB = fresh()
         local blizzard = spy(SMB, "HandleBlizzardButtons")
         SetCombat(true)
-        setValue({ "General", "Blizzard", "MoveQueue" }, true)
-        setValue({ "General", "Blizzard", "MoveMail" }, false)
+        setValue({ "Blizzard", "MoveQueue" }, true)
+        setValue({ "Blizzard", "MoveMail" }, false)
         assert_eq(SMB.db.MoveQueue, true, "written at once")
         assert_eq(blizzard.n, 0, "nothing built in combat")
         assert_nil(_G.SMB_QueueFrame)
@@ -757,7 +907,7 @@ describe("combat", function()
         SetCombat(true)
         local blizzard, update = spy(SMB, "HandleBlizzardButtons"), spy(SMB, "Update")
         setValue({ "General", "MBB", "IconSize" }, 30)
-        setValue({ "General", "Blizzard", "MoveMail" }, true)
+        setValue({ "Blizzard", "MoveMail" }, true)
         assert_eq(update.n, 1, "the setter's Update, which waits")
         SetCombat(false)
         assert_eq(blizzard.n, 1)

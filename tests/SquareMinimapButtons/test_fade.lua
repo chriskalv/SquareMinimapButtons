@@ -1,7 +1,8 @@
 -- Test group 7 (fade and visibility): UIFrameFadeIn/Out after ProjectAzilroka's
 -- Modules/SquareMinimapButtons.lua (button hooks 324-334, bar scripts 540-545, end of Update
--- 447-451) and the visibility driver (Update 439-445, db.Visibility). Change of the port: Update
--- fades only with buttons (ActualButtons > 0), so an empty bar stays hidden.
+-- 447-451). Changes of the port: Update fades only with buttons (ActualButtons > 0), so an empty
+-- bar stays hidden; since nachtrag 2 there is no visibility driver (the original's Update 439-445
+-- with db.Visibility "[petbattle] hide; show"; WoW Forever has no pet battles).
 
 local function fresh(config)
     ReloadAddon(config or {})
@@ -93,10 +94,10 @@ describe("fade on the buttons (hooks of SkinMinimapButton)", function()
         assert_eq(button.log, { "OnEnter", "OnLeave", "OnEnter", "OnLeave" }, "the button's own scripts still run")
     end)
 
-    it("a bar hidden by its driver does not fade", function()
+    it("a hidden bar does not fade", function()
         local SMB, buttons = withButtons(1)
         SMB.db.BarMouseOver = true
-        SetStateDriverHidden(SMB.Bar, true)
+        SMB.Bar:Hide()
         buttons[1]:GetScript("OnEnter")(buttons[1])
         buttons[1]:GetScript("OnLeave")(buttons[1])
         assert_eq(#STUB.fades, 0)
@@ -133,39 +134,31 @@ describe("fade on the bar (scripts of Initialize)", function()
     end)
 end)
 
-describe("visibility driver", function()
-    it("registers the driver with the text from the profile when there are buttons", function()
-        local SMB = withButtons(1)
-        assert_eq(STUB.stateDrivers[SMB.Bar].visibility, "[petbattle] hide; show")
-        SMB.db.Visibility = "[combat] hide; show"
-        STUB.stateDriverLog = {}
-        SMB:Update()
-        assert_eq(STUB.stateDrivers[SMB.Bar].visibility, "[combat] hide; show")
-        assert_eq(STUB.stateDriverLog, { { action = "register", frame = SMB.Bar, state = "visibility", condition = "[combat] hide; show" } })
-        assert_true(SMB.Bar:IsShown())
-    end)
-
-    it("no driver without buttons (first scan on a minimap without addon buttons)", function()
-        local SMB = fresh()
-        assert_eq(STUB.stateDriverLog, { { action = "unregister", frame = SMB.Bar, state = "visibility" } })
-        assert_nil((STUB.stateDrivers[SMB.Bar] or {}).visibility)
-    end)
-
-    it("the driver goes when the last button is hidden and comes back with a button", function()
+describe("visibility (no driver since nachtrag 2)", function()
+    it("the bar is shown with buttons and hidden without; no state driver is ever registered", function()
         local SMB, buttons = withButtons(1)
+        assert_true(SMB.Bar:IsShown())
         buttons[1]:Hide()
         SMB:Update()
-        assert_nil(STUB.stateDrivers[SMB.Bar].visibility)
+        assert_false(SMB.Bar:IsShown())
         buttons[1]:Show()
         SMB:Update()
-        assert_eq(STUB.stateDrivers[SMB.Bar].visibility, "[petbattle] hide; show")
+        assert_true(SMB.Bar:IsShown())
+        assert_eq(STUB.stateDriverLog, {})
+        assert_nil(STUB.stateDrivers[SMB.Bar])
     end)
 
-    it("the driver hides and shows the bar (pet battle start and end)", function()
+    it("a stale db.Visibility from an old profile changes nothing", function()
         local SMB = withButtons(1)
-        assert_true(SetStateDriverHidden(SMB.Bar, true))
-        assert_false(SMB.Bar:IsShown())
-        assert_true(SetStateDriverHidden(SMB.Bar, false))
+        SMB.db.Visibility = "[combat] hide; show"
+        SMB:Update()
+        assert_eq(STUB.stateDriverLog, {})
         assert_true(SMB.Bar:IsShown())
+    end)
+
+    it("no driver on a minimap without addon buttons either", function()
+        local SMB = fresh()
+        assert_eq(STUB.stateDriverLog, {})
+        assert_false(SMB.Bar:IsShown())
     end)
 end)

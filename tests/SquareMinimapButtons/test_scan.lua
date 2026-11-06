@@ -1,5 +1,6 @@
 -- Test group 2 (scan): GrabMinimapButtons after ProjectAzilroka's Modules/SquareMinimapButtons.lua,
--- the fixed ignore list, the own ignore list from the profile and the map pin filters.
+-- the fixed ignore list and the map pin filters (the own ignore list of the port is gone since
+-- nachtrag 2).
 
 local FIXED_NAMES = {
     "BattlefieldMinimap", "ButtonCollectFrame", "ElvUI_MinimapHolder", "ExpansionLandingPageMinimapButton",
@@ -99,63 +100,18 @@ describe("ignore lists", function()
         assert_true(control.isSkinned)
     end)
 
-    it("skips names and Lua patterns of the own list (db.IgnoreList)", function()
+    it("has no own ignore list any more: a stale db.IgnoreList from an old profile ignores nothing", function()
         local SMB = fresh()
-        SMB.db.IgnoreList = { "LibDBIcon10_Exact", "^LibDBIcon10_Pat", "Suffix$" }
+        SMB.db.IgnoreList = { "LibDBIcon10_Exact", "^LibDBIcon10_Pat" }
         local exact = NewLibDBIconButton("Exact")
-        local pattern1 = NewLibDBIconButton("Pattern")
-        local pattern2 = NewLibDBIconButton("Pat2")
-        local suffix = NewPlainButton("MyAddonSuffix")
-        local other = NewLibDBIconButton("Other")
-        local exactish = NewLibDBIconButton("Exactly") -- "LibDBIcon10_Exact" is found in it as a pattern
-        assert_eq(SMB:GrabMinimapButtons(), 1)
-        assert_nil(exact.isSkinned)
-        assert_nil(pattern1.isSkinned)
-        assert_nil(pattern2.isSkinned)
-        assert_nil(suffix.isSkinned)
-        assert_nil(exactish.isSkinned)
-        assert_true(other.isSkinned)
-    end)
-
-    it("reads the own list also as a set ([entry] = true)", function()
-        local SMB = fresh()
-        SMB.db.IgnoreList = { ["LibDBIcon10_Set"] = true }
-        local set = NewLibDBIconButton("Set")
-        local other = NewLibDBIconButton("Other")
-        SMB:GrabMinimapButtons()
-        assert_nil(set.isSkinned)
-        assert_true(other.isSkinned)
-    end)
-
-    it("an invalid pattern raises no error and matches only literally", function()
-        local SMB = fresh()
-        SMB.db.IgnoreList = { "Odd[Name", "%" }
-        local odd = NewPlainButton("Odd[Name")
-        local other = NewPlainButton("OddName")
-        local percent = NewPlainButton("Hundred%")
-        local ok, count = pcall(SMB.GrabMinimapButtons, SMB)
-        assert_true(ok, tostring(count))
-        assert_eq(count, 2)
-        assert_nil(odd.isSkinned)
-        assert_true(other.isSkinned)
-        assert_true(percent.isSkinned)
-        assert_eq(#STUB.errors, 0)
-    end)
-
-    it("an empty entry or a non-string entry ignores nothing", function()
-        local SMB = fresh()
-        SMB.db.IgnoreList = { "", 42, false }
-        local a = NewLibDBIconButton("Alpha")
-        assert_eq(SMB:GrabMinimapButtons(), 1)
-        assert_true(a.isSkinned)
-    end)
-
-    it("works without an own list", function()
-        local SMB = fresh()
-        SMB.db.IgnoreList = nil
-        local a = NewLibDBIconButton("Alpha")
-        assert_eq(SMB:GrabMinimapButtons(), 1)
-        assert_true(a.isSkinned)
+        local pattern = NewLibDBIconButton("Pattern")
+        assert_eq(SMB:GrabMinimapButtons(), 2)
+        assert_true(exact.isSkinned)
+        assert_true(pattern.isSkinned)
+        assert_nil(SMB.IsInIgnoreList, "the own list is gone")
+        assert_false(SMB:IsIgnored(nil))
+        assert_false(SMB:IsIgnored("LibDBIcon10_Exact"))
+        assert_true(SMB:IsIgnored("MinimapZoomIn"))
     end)
 end)
 
@@ -290,10 +246,10 @@ describe("Update after the scan", function()
         assert_eq(result, 1)
     end)
 
-    it("/zmb scan runs the scan", function()
+    it("/smb scan runs the scan", function()
         local SMB = fresh()
         local a = NewLibDBIconButton("Alpha")
-        RunSlash("/zmb", "scan")
+        RunSlash("/smb", "scan")
         assert_true(a.isSkinned)
         assert_eq(#SMB.Buttons, 1)
         assert_eq(ChatContains("Scanning is not available yet."), 0)

@@ -9,6 +9,12 @@
 	have the same fields that its helpers create.
 
 	Changes from the original in this part:
+	  - three tabs (General, Blizzard, Profiles) instead of one page with inline groups: the root
+	    group has childGroups 'tab', and AceConfigDialog puts the content of each tab into a scroll
+	    frame (FeedGroup), so nothing reaches past the frame; the description and the authors stand
+	    at the top of the tab General; the Blizzard toggles have an order (the original sorts them by
+	    name) so that the tracker glow stands under the tracker toggle;
+	  - Visibility is gone (WoW Forever has no pet battles);
 	  - hidden per client after this port's client detection: the garrison toggles are hidden in WoW
 	    Forever too (they have no effect, as in the original), mail, tracking, calendar and queue are
 	    shown there;
@@ -18,11 +24,10 @@
 	    original only adds buttons and needs a reload without saying so); MoveQueue is disabled with a
 	    hint while ElvUI's queue module holds the queue button;
 	  - Blizzard buttons in combat are built after combat (SMB:RequestBlizzardButtons in Core.lua);
-	  - a group "Extensions" with the options of this port (anchor to the minimap, lock, own ignore
-	    list); with an ElvUI or Tukui mover the anchor options are disabled with a hint;
+	  - a toggle "Glowing Tracker Icon when not tracking" (db.TrackerGlow) under the tracker toggle;
 	  - a line "WoW Forever port: Zippy" under the authors;
-	  - registered both in the Blizzard settings (with a subcategory for the profiles) and, when
-	    ElvUI's plugin library is there, in ElvUI's options (ProjectAzilroka uses one or the other).
+	  - registered both in the Blizzard settings (the same three tabs) and, when ElvUI's plugin
+	    library is there, in ElvUI's options (ProjectAzilroka uses one or the other).
 ]]
 
 local _, ns = ...
@@ -30,8 +35,7 @@ local SMB, L = ns.SMB, ns.L
 
 local _G = _G
 local LibStub = _G.LibStub
-local type, pairs, ipairs, sort, tconcat, tinsert = type, pairs, ipairs, table.sort, table.concat, table.insert
-local strtrim, gmatch = strtrim, string.gmatch
+local type, pairs = type, pairs
 
 SMB.OptionsName = 'SquareMinimapButtons' -- the AceConfig app name (Core.lua opens it under SMB.AddonName)
 
@@ -40,12 +44,7 @@ local STRATA = {
 	FULLSCREEN = 'FULLSCREEN', FULLSCREEN_DIALOG = 'FULLSCREEN_DIALOG', TOOLTIP = 'TOOLTIP'
 }
 
-local POINTS = {
-	TOPLEFT = 'TOPLEFT', TOP = 'TOP', TOPRIGHT = 'TOPRIGHT', LEFT = 'LEFT', CENTER = 'CENTER',
-	RIGHT = 'RIGHT', BOTTOMLEFT = 'BOTTOMLEFT', BOTTOM = 'BOTTOM', BOTTOMRIGHT = 'BOTTOMRIGHT'
-}
-
-SMB.StrataValues, SMB.PointValues = STRATA, POINTS
+SMB.StrataValues = STRATA
 
 --------------------------------------------------------------------------------
 -- Helpers
@@ -73,51 +72,6 @@ end
 -- that, the holder frame itself).
 function SMB:IsQueueLocked()
 	return SMB.queueLocked == true or _G.ElvUIQueueStatus ~= nil
-end
-
--- The anchor options do nothing while an ElvUI or Tukui mover holds the bar.
-local function anchorDisabled()
-	return SMB.barMover ~= nil
-end
-
-local function anchorDetailDisabled()
-	return SMB.barMover ~= nil or not SMB.db.AnchorToMinimap
-end
-
--- Own ignore list: db.IgnoreList (list of strings; a set [entry] = true is read too) <-> one entry
--- per line.
-function SMB:IgnoreListToText(list)
-	if type(list) ~= 'table' then return '' end
-	local lines, seen = {}, {}
-	for _, entry in ipairs(list) do
-		if type(entry) == 'string' and not seen[entry] then
-			seen[entry] = true
-			tinsert(lines, entry)
-		end
-	end
-	local extra = {}
-	for key, value in pairs(list) do
-		if value == true and type(key) == 'string' and not seen[key] then
-			seen[key] = true
-			tinsert(extra, key)
-		end
-	end
-	sort(extra)
-	for _, entry in ipairs(extra) do tinsert(lines, entry) end
-	return tconcat(lines, '\n')
-end
-
-function SMB:TextToIgnoreList(text)
-	local list, seen = {}, {}
-	if type(text) ~= 'string' then return list end
-	for line in gmatch(text, '[^\r\n]+') do
-		local entry = strtrim(line)
-		if entry ~= '' and not seen[entry] then
-			seen[entry] = true
-			tinsert(list, entry)
-		end
-	end
-	return list
 end
 
 --------------------------------------------------------------------------------
@@ -156,20 +110,13 @@ local function setEnable(info, value)
 	elseif SMB.isEnabled then
 		_G.StaticPopup_Show('SQUAREMINIMAPBUTTONS_RL')
 	end
+	SMB:UpdateTrackerGlow() -- off: the glow goes at once
 end
 
-local function setPosition(info, value)
+-- The tracker glow needs no rebuild and no reload.
+local function setTrackerGlow(info, value)
 	SMB.db[info[#info]] = value
-	SMB:ApplyBarPosition()
-end
-
-local function getIgnoreList()
-	return SMB:IgnoreListToText(SMB.db.IgnoreList)
-end
-
-local function setIgnoreList(_, value)
-	SMB.db.IgnoreList = SMB:TextToIgnoreList(value)
-	SMB:GrabMinimapButtons(true)
+	SMB:UpdateTrackerGlow()
 end
 
 local function queueDesc()
@@ -184,18 +131,22 @@ function SMB:GetOptions()
 		type = 'group',
 		name = SMB.Title,
 		desc = SMB.Description,
+		childGroups = 'tab',
 		get = get,
 		set = setAndUpdate,
 		args = {},
 	}
 
-	Options.args.Description = { type = 'description', name = SMB.Description, order = 0 }
-	Options.args.Enable = { type = 'toggle', name = L['Enable'], order = 1, set = setEnable }
-
-	local General = { type = 'group', name = L['General'], order = 2, inline = true, args = {} }
+	-- Tab General: description, authors, Enable, the bar, strata and level
+	local General = { type = 'group', name = L['General'], order = 1, args = {} }
 	Options.args.General = General
+	General.args.Description = { type = 'description', name = SMB.Description, order = 1 }
+	General.args.AuthorHeader = { type = 'header', name = L['Authors:'], order = 2 }
+	General.args.Authors = { type = 'description', name = SMB.Authors, order = 3, fontSize = 'large' }
+	General.args.PortAuthor = { type = 'description', name = L['WoW Forever port:'] .. ' ' .. SMB.PortAuthor, order = 4, fontSize = 'medium' }
+	General.args.Enable = { type = 'toggle', name = L['Enable'], order = 5, set = setEnable }
 
-	local MBB = { type = 'group', name = L['Minimap Buttons / Bar'], order = 1, inline = true, args = {} }
+	local MBB = { type = 'group', name = L['Minimap Buttons / Bar'], order = 6, inline = true, args = {} }
 	General.args.MBB = MBB
 	MBB.args.BarEnabled = { type = 'toggle', name = L['Enable Bar'], order = 1 }
 	MBB.args.BarMouseOver = { type = 'toggle', name = L['Bar MouseOver'], order = 2 }
@@ -205,85 +156,49 @@ function SMB:GetOptions()
 	MBB.args.ButtonsPerRow = { type = 'range', name = L['Buttons Per Row'], order = 6, min = 1, max = 100, step = 1 }
 	MBB.args.Shadows = { type = 'toggle', name = L['Shadows'], order = 7 }
 	MBB.args.ReverseDirection = { type = 'toggle', name = L['Reverse Direction'], order = 8 }
-	MBB.args.Visibility = { type = 'input', name = L['Visibility'], order = 12, width = 'double' }
 
-	General.args.Strata = { type = 'select', name = L['Frame Strata'], order = 3, values = STRATA }
-	General.args.Level = { type = 'range', name = L['Frame Level'], order = 4, min = 0, max = 255, step = 1 }
+	General.args.Strata = { type = 'select', name = L['Frame Strata'], order = 7, values = STRATA }
+	General.args.Level = { type = 'range', name = L['Frame Level'], order = 8, min = 0, max = 255, step = 1 }
 
-	-- The toggles of this group have no order, as in the original (sorted by name).
-	local Blizzard = { type = 'group', name = L['Blizzard'], order = 2, inline = true, set = setBlizzard, args = {} }
-	General.args.Blizzard = Blizzard
+	-- Tab Blizzard: one toggle per line (full width), the tracker glow under the tracker toggle
+	local Blizzard = { type = 'group', name = L['Blizzard'], order = 2, set = setBlizzard, args = {} }
+	Options.args.Blizzard = Blizzard
 	Blizzard.args.HideGarrison = {
-		type = 'toggle', name = L['Hide Garrison'],
+		type = 'toggle', name = L['Hide Garrison'], order = 1, width = 'full',
 		disabled = function() return SMB.db.MoveGarrison end,
 		hidden = function() return SMB.IsClassic or SMB.IsForever end,
 	}
 	Blizzard.args.MoveGarrison = {
-		type = 'toggle', name = L['Move Garrison Icon'],
+		type = 'toggle', name = L['Move Garrison Icon'], order = 2, width = 'full',
 		disabled = function() return SMB.db.HideGarrison end,
 		hidden = function() return SMB.IsClassic or SMB.IsForever end,
 	}
-	Blizzard.args.MoveMail = { type = 'toggle', name = L['Move Mail Icon'] }
 	Blizzard.args.MoveGameTimeFrame = {
-		type = 'toggle', name = L['Move Game Time Frame'],
+		type = 'toggle', name = L['Move Game Time Frame'], order = 3, width = 'full',
 		hidden = function() return SMB.IsRetail end,
 	}
+	Blizzard.args.MoveMail = { type = 'toggle', name = L['Move Mail Icon'], order = 4, width = 'full' }
 	Blizzard.args.MoveTracker = {
-		type = 'toggle', name = L['Move Tracker Icon'],
+		type = 'toggle', name = L['Move Tracker Icon'], order = 5, width = 'full',
+		hidden = function() return SMB.IsClassic end,
+	}
+	Blizzard.args.TrackerGlow = {
+		type = 'toggle', name = L['Glowing Tracker Icon when not tracking'], order = 6, width = 'full',
+		desc = L['A red glow pulses around the tracker icon while none of your tracking abilities (for example Find Herbs or Find Minerals) is active. Only takes effect when your character can track something.'],
+		set = setTrackerGlow,
 		hidden = function() return SMB.IsClassic end,
 	}
 	Blizzard.args.MoveQueue = {
-		type = 'toggle', name = L['Move Queue Status Icon'], desc = queueDesc,
+		type = 'toggle', name = L['Move Queue Status Icon'], order = 7, width = 'full', desc = queueDesc,
 		disabled = function() return SMB:IsQueueLocked() end,
 		hidden = function() return SMB.IsClassic end,
 	}
 
-	-- Extensions of this port (not in the original)
-	local Extensions = { type = 'group', name = L['Extensions'], order = 3, inline = true, set = setPosition, args = {} }
-	Options.args.Extensions = Extensions
-	Extensions.args.MoverNote = {
-		type = 'description', order = 0,
-		name = L['The ElvUI or Tukui mover holds the position of the bar, so the anchor options are disabled.'],
-		hidden = function() return SMB.barMover == nil end,
-	}
-	Extensions.args.AnchorToMinimap = {
-		type = 'toggle', name = L['Anchor to Minimap'], order = 1, width = 'full',
-		desc = L['Keeps the bar attached to the minimap. When disabled, the bar can be moved freely like in ProjectAzilroka.'],
-		disabled = anchorDisabled,
-	}
-	Extensions.args.Point = {
-		type = 'select', name = L['Point'], order = 2, values = POINTS,
-		desc = L['Point of the bar that is attached to the minimap.'],
-		disabled = anchorDetailDisabled,
-	}
-	Extensions.args.RelativePoint = {
-		type = 'select', name = L['Relative Point'], order = 3, values = POINTS,
-		desc = L['Point of the minimap that the bar is attached to.'],
-		disabled = anchorDetailDisabled,
-	}
-	Extensions.args.X = { type = 'range', name = L['X Offset'], order = 4, min = -200, max = 200, step = 1, disabled = anchorDetailDisabled }
-	Extensions.args.Y = { type = 'range', name = L['Y Offset'], order = 5, min = -200, max = 200, step = 1, disabled = anchorDetailDisabled }
-	Extensions.args.Lock = {
-		type = 'toggle', name = L['Lock Bar'], order = 6, width = 'full',
-		desc = L['Prevents the bar from being dragged.'],
-	}
-	Extensions.args.IgnoreList = {
-		type = 'input', name = L['Ignore List'], order = 7, multiline = 6, width = 'full',
-		desc = L['Buttons that stay on the minimap: one frame name or Lua pattern per line.'] .. ' '
-			.. L['A button that is already in the bar stays there until you reload your User Interface.'],
-		get = getIgnoreList,
-		set = setIgnoreList,
-	}
-
-	Options.args.AuthorHeader = { type = 'header', name = L['Authors:'], order = -4 }
-	Options.args.Authors = { type = 'description', name = SMB.Authors, order = -3, fontSize = 'large' }
-	Options.args.PortAuthor = { type = 'description', name = L['WoW Forever port:'] .. ' ' .. SMB.PortAuthor, order = -2, fontSize = 'medium' }
-
-	-- Profiles (ProjectAzilroka Init.lua: AceDBOptions as a group of its options)
+	-- Tab Profiles (ProjectAzilroka Init.lua: AceDBOptions as a group of its options)
 	local ADBO = LibStub('AceDBOptions-3.0', true)
 	if ADBO and SMB.data then
 		local profiles = ADBO:GetOptionsTable(SMB.data)
-		profiles.order = -1
+		profiles.order = 3
 		Options.args.profiles = profiles
 	end
 
@@ -294,8 +209,8 @@ end
 -- ElvUI options (ProjectAzilroka Init.lua: LibElvUIPlugin calls back when ElvUI's options load)
 --------------------------------------------------------------------------------
 
--- The tree for ElvUI's options: the same groups and settings, tabs, without the profiles (ElvUI has
--- its own profiles; these are in the Blizzard settings and the own dialog).
+-- The tree for ElvUI's options: the same tabs and settings without the profiles (ElvUI has its own
+-- profiles; these are in the Blizzard settings and the own dialog).
 function SMB:GetElvUIOptions()
 	local options = SMB.Options or SMB:GetOptions()
 	local args = {}
@@ -334,9 +249,16 @@ end
 
 --------------------------------------------------------------------------------
 -- Registration (called from Core.lua SMB:Start, before Initialize)
+--
+-- Size of the own dialog (AceGUI Frame): its content is 34 narrower and 57 lower than the frame,
+-- the TabGroup takes another 60 in width and 53 in height (one row of tabs), so a tab shows
+-- (width - 94) x (height - 110). 640 leaves 546 for three controls of 170 per row (510), also in
+-- an inline group (526); 560 leaves 450 in height, enough for the tab Profiles (about 390 to 430,
+-- the longest), General (about 300) and Blizzard (about 165). Every tab scrolls if it ever needs
+-- more. Measurements in the README (Options dialog).
 --------------------------------------------------------------------------------
 
-SMB.DialogWidth, SMB.DialogHeight = 700, 620
+SMB.DialogWidth, SMB.DialogHeight = 640, 560
 
 function SMB:RegisterOptions()
 	if SMB.optionsRegistered then return end
@@ -349,14 +271,12 @@ function SMB:RegisterOptions()
 	registry:RegisterOptionsTable(SMB.OptionsName, SMB.Options)
 	dialog:SetDefaultSize(SMB.OptionsName, SMB.DialogWidth, SMB.DialogHeight)
 
-	-- Blizzard settings: the addon and its profiles as a subcategory.
+	-- Blizzard settings: one category with the same three tabs (the profiles are a tab now, so the
+	-- former subcategory "Profiles" is gone).
 	local Settings = _G.Settings
 	if dialog.AddToBlizOptions and type(Settings) == 'table' and Settings.RegisterCanvasLayoutCategory then
 		local _, categoryID = dialog:AddToBlizOptions(SMB.OptionsName, SMB.Title)
 		SMB.SettingsCategoryID = categoryID
-		if SMB.Options.args.profiles and Settings.RegisterCanvasLayoutSubcategory and Settings.GetCategory then
-			dialog:AddToBlizOptions(SMB.OptionsName, L['Profiles'], SMB.Title, 'profiles')
-		end
 	end
 
 	registerElvUIPlugin()

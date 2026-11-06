@@ -15,12 +15,12 @@ local function fresh(config)
     return GetAddon()
 end
 
--- a profile stored in the saved variables for the character Zippy - Forever
+-- the shared profile Default, stored in the saved variables for the character Zippy - Forever
 local function withProfile(values, config)
     config = config or {}
     config.savedVariables = {
-        profileKeys = { ["Zippy - Forever"] = "Zippy - Forever" },
-        profiles = { ["Zippy - Forever"] = values },
+        profileKeys = { ["Zippy - Forever"] = "Default" },
+        profiles = { Default = values },
     }
     return config
 end
@@ -542,7 +542,7 @@ describe("timer", function()
         assertInBar(SMB)
         assert_true(SMB.Bar:IsShown())
         assert_eq({ SMB.Bar:GetSize() }, { 18, 54 })
-        assert_eq(STUB.stateDrivers[SMB.Bar].visibility, "[petbattle] hide; show")
+        assert_eq(STUB.stateDriverLog, {}, "no visibility driver (nachtrag 2)")
         assert_eq(STUB.errors, {})
     end)
 

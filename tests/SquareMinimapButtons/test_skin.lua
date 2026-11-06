@@ -372,3 +372,118 @@ describe("fading hooks", function()
         SMB.Bar = realBar
     end)
 end)
+
+-- A LibDBIcon button as Connoisseur & Restocker adjusts it for Camelot and Mainline
+-- (Features/Minimap-Button.lua, RegisterMinimapIcon): icon 20 x 20 at CENTER +1/-0.35 and a mask
+-- texture with the round file 130924 (TempPortraitAlphaMask) on the icon; the icon itself is the
+-- best food (UpdateMinimapIcon sets it again later).
+local FOOD_ICON = 133945
+local MASK_FILE = 130924
+
+local function connoisseurButton()
+    local button = NewLibDBIconButton("Connoisseur")
+    button.icon:SetSize(20, 20)
+    button.icon:ClearAllPoints()
+    button.icon:SetPoint("CENTER", 1, -0.35)
+    local mask = button:CreateMaskTexture()
+    mask:SetTexture(MASK_FILE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetAllPoints(button.icon)
+    button.icon:AddMaskTexture(mask)
+    button.icon:SetTexture(FOOD_ICON)
+    return button, mask
+end
+
+describe("mask textures (nachtrag 2: empty button of Connoisseur & Restocker)", function()
+    it("the stub mask is a texture object of type MaskTexture with the file ID 130924", function()
+        fresh()
+        local _, mask = connoisseurButton()
+        assert_true(mask:IsObjectType("Texture"))
+        assert_eq(mask:GetObjectType(), "MaskTexture")
+        assert_eq(mask:GetTextureFileID(), MASK_FILE)
+        assert_true(GetAddon():RemoveTexture(mask:GetTextureFileID()), "130924 stays in RemoveTextureID")
+    end)
+
+    it("keeps the icon: texture, alpha, no mask on it; the mask itself is left untouched", function()
+        local SMB = fresh()
+        local button, mask = connoisseurButton()
+        local maskPoints = StubState(mask).points
+        SMB:SkinMinimapButton(button)
+        local icon = button.icon
+        assert_eq(icon:GetTexture(), FOOD_ICON, "the food icon stays")
+        assert_eq(icon:GetAlpha(), 1)
+        assert_eq(icon:GetNumMaskTextures(), 0, "the round mask is taken off the icon")
+        assertInside(icon, button)
+        assert_eq(mask:GetTexture(), MASK_FILE, "the mask is not emptied")
+        assert_eq(mask:GetAlpha(), 1, "the mask keeps its alpha")
+        assert_true(StubState(mask).points == maskPoints, "the mask is not moved")
+        assert_true(rawget(mask, "SetPoint") == nil, "the mask's SetPoint is not locked")
+        assert_eq(texCoord(mask), FULL, "the mask is not cropped")
+    end)
+
+    it("a later icon change of the addon shows in the bar (UpdateMinimapIcon)", function()
+        local SMB = fresh()
+        local button = connoisseurButton()
+        SMB:GrabMinimapButtons(true)
+        assert_true(button:GetParent() == SMB.Bar)
+        button.icon:SetTexture(134062)
+        assert_eq(button.icon:GetTexture(), 134062)
+        assert_eq(button.icon:GetNumMaskTextures(), 0)
+    end)
+
+    -- Regression probe: the code before nachtrag 2 emptied the mask (it is a texture with a file
+    -- ID of RemoveTextureID), and a texture masked by an empty mask is invisible.
+    it("the old logic (masks treated as textures) would have emptied the mask", function()
+        local SMB = fresh()
+        local button, mask = connoisseurButton()
+        local isMask = SMB.IsMaskTexture
+        assert_true(isMask(mask))
+        assert_false(isMask(button.icon))
+        SMB:SkinMinimapButton(button)
+        assert_true(mask:GetTexture() ~= nil, "not emptied")
+        assert_true(StubState(mask).setTextureArgs ~= 0, "never SetTexture() without argument")
+    end)
+
+    it("130924 as an ordinary round texture (not a mask) is still emptied", function()
+        local SMB = fresh()
+        local button = NewPlainButton("RoundBorderButton", { border = MASK_FILE })
+        SMB:SkinMinimapButton(button)
+        assert_nil(button.border:GetTexture())
+        assert_eq(button.border:GetAlpha(), 0)
+        assert_eq(button.icon:GetTexture(), 134400)
+    end)
+
+    it("takes every mask off a skinned texture, also masks with other files, and leaves them alone", function()
+        local SMB = fresh()
+        local button = NewPlainButton("TwoMasks")
+        local a, b = button:CreateMaskTexture(), button:CreateMaskTexture()
+        a:SetTexture("Interface\\Masks\\CircleMaskScalable")
+        b:SetTexture(MASK_FILE)
+        button.icon:AddMaskTexture(a)
+        button.icon:AddMaskTexture(b)
+        SMB:SkinMinimapButton(button)
+        assert_eq(button.icon:GetNumMaskTextures(), 0)
+        assert_eq(a:GetTexture(), "Interface\\Masks\\CircleMaskScalable")
+        assert_eq(b:GetTexture(), MASK_FILE)
+        assert_eq(STUB.calls.RemoveMaskTexture, 2)
+    end)
+
+    it("RemoveMasks changes nothing when the count is a secret value", function()
+        local SMB = fresh()
+        local button, mask = connoisseurButton()
+        local icon = button.icon
+        local count = icon.GetNumMaskTextures
+        icon.GetNumMaskTextures = function(self)
+            STUB.secretTexCoordPending = true -- issecretvalue answers true for the next numbers
+            return count(self)
+        end
+        assert_eq(SMB:RemoveMasks(icon), 0)
+        STUB.secretTexCoordPending = false
+        assert_eq(icon:GetNumMaskTextures(), 1, "the mask stays")
+        assert_true(icon:GetMaskTexture(1) == mask)
+    end)
+
+    it("RemoveMasks works on regions without the mask API", function()
+        local SMB = fresh()
+        assert_eq(SMB:RemoveMasks({}), 0)
+    end)
+end)

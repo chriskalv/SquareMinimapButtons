@@ -5,26 +5,30 @@
 	This file follows ProjectAzilroka's Modules/SquareMinimapButtons.lua. It contains the scan of
 	the minimap (GrabMinimapButtons), the skinning of the buttons (SkinMinimapButton, HandleRegion),
 	the locking of their position methods (LockButton, UnlockButton), the Blizzard buttons
-	(HandleBlizzardButtons: mail, tracking, queue, calendar) and the bar (Initialize, Update,
-	fading, visibility driver, mover and dragging). The options are in Options.lua.
+	(HandleBlizzardButtons: mail, tracking, queue, calendar), the bar (Initialize, Update, fading,
+	mover and dragging) and the glow on the tracker button (UpdateTrackerGlow). The options are in
+	Options.lua.
 
 	Changes from the original in this part:
-	  - an own ignore list from the profile (db.IgnoreList: button names or Lua patterns) next to
-	    the fixed list;
+	  - mask textures are never emptied, moved or cropped, and the masks of a skinned texture are
+	    taken off it (the original empties a MaskTexture with file ID 130924, which hides the
+	    masked icon completely, for example the icon of Connoisseur & Restocker);
 	  - HandleRegion does not compare the texture coordinates when one of them is a secret value
 	    (issecretvalue) or not a number; such a region keeps its coordinates;
 	  - SkinMinimapButton returns at once for a button that is already skinned;
 	  - GrabMinimapButtons returns the number of buttons it skinned (nil when it does not scan);
 	  - Update counts a button that already sits in the bar by IsShown() instead of IsVisible(), so a
-	    hidden bar (pet battle driver) does not count zero buttons and switch itself off for good;
+	    hidden bar does not count zero buttons and switch itself off for good;
+	  - no visibility driver: WoW Forever has no pet battles, the bar is shown whenever it has
+	    buttons (the original registers "[petbattle] hide; show" from db.Visibility);
 	  - Update in combat waits for PLAYER_REGEN_ENABLED, and so do the Blizzard buttons requested by
 	    an option or profile change in combat (SMB:RequestBlizzardButtons in Core.lua);
 	  - the bar is anchored to the minimap by default (db.AnchorToMinimap, db.Point, db.RelativePoint,
 	    db.X, db.Y); without that anchor it stands at its saved free position (db.BarPosition) or,
 	    without one, where the original puts it (RIGHT of UIParent, -45/0);
 	  - without ElvUI and Tukui the bar itself has OnDragStart/OnDragStop (the original registers it
-	    for dragging but gives it no scripts), the position is saved in the profile, and db.Lock or
-	    db.AnchorToMinimap stop the dragging (of the bar and of its buttons);
+	    for dragging but gives it no scripts), the position is saved in the profile, and
+	    db.AnchorToMinimap (the default) stops the dragging (of the bar and of its buttons);
 	  - the ElvUI and Tukui movers are used only if the global of that addon exists (an enabled but
 	    not loaded ElvUI would raise an error in the original);
 	  - Update fades the bar in or out only when it has buttons; in the original UIFrameFadeIn/Out
@@ -39,6 +43,8 @@
 	    starts with the mouse state that its OnShow/OnHide hooks keep; Update runs at the end also
 	    in combat, where it waits for the end of combat (the original skips it in combat);
 	  - Initialize builds the bar only once;
+	  - a red glow pulses around the tracker button while the character can track something but
+	    no tracking ability is active (db.TrackerGlow; new, after a WeakAura of the owner);
 	  - CheckTexture and SMB.Hider of the original are unused there and left out.
 ]]
 
@@ -46,8 +52,8 @@ local _, ns = ...
 local SMB = ns.SMB
 
 local _G = _G
-local type, next, pairs, ipairs, pcall, tostring, unpack, select = type, next, pairs, ipairs, pcall, tostring, unpack, select
-local strfind, strmatch, tinsert = string.find, string.match, table.insert
+local type, next, pairs, ipairs, tostring, unpack, select = type, next, pairs, ipairs, tostring, unpack, select
+local strmatch, tinsert = string.match, table.insert
 
 -- Buttons in the order they were skinned; the bar (Update) lays them out in this order.
 SMB.Buttons = SMB.Buttons or {}
@@ -94,34 +100,11 @@ function SMB:RemoveTexture(texture)
 end
 
 --------------------------------------------------------------------------------
--- Ignore lists
+-- Ignore list (the fixed list of the original)
 --------------------------------------------------------------------------------
 
--- An entry of the own list matches if it equals the name or, as a Lua pattern, is found in it.
--- An invalid pattern raises no error; the entry then only matches the name literally.
-local function matchesEntry(name, entry)
-	if type(entry) ~= 'string' or entry == '' then return false end
-	if entry == name then return true end
-	local ok, found = pcall(strfind, name, entry)
-	return ok and found ~= nil
-end
-
--- db.IgnoreList holds the entries as a list of strings; a set of the form [entry] = true is read too.
-function SMB:IsInIgnoreList(name)
-	if type(name) ~= 'string' then return false end
-	local list = SMB.db and SMB.db.IgnoreList
-	if type(list) ~= 'table' then return false end
-	for key, value in pairs(list) do
-		local entry = value
-		if value == true then entry = key end
-		if matchesEntry(name, entry) then return true end
-	end
-	return false
-end
-
 function SMB:IsIgnored(name)
-	if name ~= nil and SMB.IgnoreButton[name] then return true end
-	return SMB:IsInIgnoreList(name)
+	return name ~= nil and SMB.IgnoreButton[name] == true
 end
 
 --------------------------------------------------------------------------------
@@ -415,10 +398,41 @@ local function isPlainTexCoord(...)
 	return true
 end
 
+-- A MaskTexture is a texture object too (IsObjectType('Texture')), and the skin must never empty,
+-- move or crop it: an emptied mask hides everything it masks. LibDBIcon buttons may carry one, for
+-- example Connoisseur & Restocker masks its icon with the round file 130924, which is also in
+-- RemoveTextureID.
+local function isMaskTexture(region)
+	return region.GetObjectType ~= nil and region:GetObjectType() == 'MaskTexture'
+end
+SMB.IsMaskTexture = isMaskTexture
+
+-- Takes the masks off a texture (the square skin needs no round mask, and a mask of another addon
+-- would cut the cropped icon). The masks themselves stay as they are; the addon may keep them.
+-- GetNumMaskTextures and GetMaskTexture may return secret values (SecretReturnsForAspect
+-- Hierarchy); then nothing is changed.
+function SMB:RemoveMasks(region)
+	if not (region.GetNumMaskTextures and region.GetMaskTexture and region.RemoveMaskTexture) then return 0 end
+	local count = region:GetNumMaskTextures()
+	local issecretvalue = _G.issecretvalue
+	if type(count) ~= 'number' or (issecretvalue and issecretvalue(count)) then return 0 end
+	local masks = {}
+	for i = 1, count do
+		local mask = region:GetMaskTexture(i)
+		if mask ~= nil and not (issecretvalue and issecretvalue(mask)) then masks[#masks + 1] = mask end
+	end
+	for _, mask in ipairs(masks) do
+		region:RemoveMaskTexture(mask)
+	end
+	return #masks
+end
+
 function SMB:HandleRegion(button, region)
+	if isMaskTexture(region) then return end
 	local texture = region.GetTextureFileID and region:GetTextureFileID() or region.GetTexture and region:GetTexture()
 	if not texture then return end
 
+	SMB:RemoveMasks(region)
 	region:ClearAllPoints()
 	region:SetDrawLayer('ARTWORK')
 	SMB:SetInside(region)
@@ -441,7 +455,7 @@ function SMB:SkinMinimapButton(button)
 
 	for _, frames in next, { button, button:GetChildren() } do
 		for _, region in next, { frames:GetRegions() } do
-			if region.IsObjectType and region:IsObjectType('Texture') then
+			if region.IsObjectType and region:IsObjectType('Texture') and not isMaskTexture(region) then
 				local texture = region.GetTextureFileID and region:GetTextureFileID() or region.GetTexture and region:GetTexture()
 				if texture and SMB:RemoveTexture(texture) then
 					region:SetTexture()
@@ -530,11 +544,12 @@ end
 -- Bar: dragging and position
 --------------------------------------------------------------------------------
 
--- The bar may be dragged only without an ElvUI or Tukui mover, unlocked and not anchored to the
--- minimap. Dragging a button in the bar drags the bar (the original sets these scripts on the
+-- The bar may be dragged only without an ElvUI or Tukui mover and not anchored to the minimap
+-- (db.AnchorToMinimap has no option since 2026-11-06; a profile from an earlier test version may
+-- have it off). Dragging a button in the bar drags the bar (the original sets these scripts on the
 -- buttons too); called as scripts, so self is the bar or a button.
 function SMB:CanDragBar()
-	return SMB.Bar ~= nil and not SMB.barMover and not SMB.db.Lock and not SMB.db.AnchorToMinimap
+	return SMB.Bar ~= nil and not SMB.barMover and not SMB.db.AnchorToMinimap
 end
 
 function SMB:OnDragStart()
@@ -562,7 +577,7 @@ end
 -- Sets the position of the bar from the profile: anchored to the minimap (db.Point of the bar at
 -- db.RelativePoint of the minimap, offset db.X/db.Y), else the saved free position at UIParent, else
 -- the position of the original (RIGHT of UIParent, -45/0). Ends a drag in progress, so that a new
--- profile or a lock takes effect at once. With an ElvUI or Tukui mover the mover holds the position
+-- profile takes effect at once. With an ElvUI or Tukui mover the mover holds the position
 -- (it starts from the position set here in Initialize); then this does nothing else.
 function SMB:ApplyBarPosition()
 	local Bar = SMB.Bar
@@ -594,8 +609,9 @@ end
 --------------------------------------------------------------------------------
 
 -- A button that already sits in the bar counts if it is shown (IsShown), because the bar itself may
--- be hidden by its visibility driver; every other button counts if it is visible (IsVisible), as in
--- the original, so that a button in a hidden frame (for example ElvUI's hidden calendar) stays out.
+-- be hidden (it hides itself without buttons); every other button counts if it is visible
+-- (IsVisible), as in the original, so that a button in a hidden frame (for example ElvUI's hidden
+-- calendar) stays out.
 local function countsForBar(Button, Bar)
 	if Button:GetParent() == Bar then
 		return Button:IsShown()
@@ -691,16 +707,16 @@ function SMB:Update()
 		Bar:SetBackdrop(nil)
 	end
 
+	-- No visibility driver (the original: RegisterStateDriver with db.Visibility, "[petbattle]
+	-- hide; show"); WoW Forever has no pet battles.
 	if ActualButtons == 0 then
-		_G.UnregisterStateDriver(Bar, 'visibility')
 		Bar:Hide()
 	else
-		_G.RegisterStateDriver(Bar, 'visibility', SMB.db.Visibility)
 		Bar:Show()
 	end
 
 	-- Only with buttons: UIFrameFadeIn/Out show the frame (UIFrameFade calls frame:Show()), so in the
-	-- original the empty bar came back as a narrow strip without its visibility driver.
+	-- original the empty bar came back as a narrow strip.
 	if ActualButtons > 0 then
 		if SMB.db.BarMouseOver then
 			_G.UIFrameFadeOut(Bar, 0.2, Bar:GetAlpha(), 0)
@@ -708,6 +724,126 @@ function SMB:Update()
 			_G.UIFrameFadeIn(Bar, 0.2, Bar:GetAlpha(), 1)
 		end
 	end
+
+	-- the tracker button may have moved into the bar (frame level of its glow)
+	SMB:UpdateTrackerGlow()
+end
+
+--------------------------------------------------------------------------------
+-- Tracker glow (new in this port, after the owner's WeakAura "Track Herbs/Minerals/etc.")
+-- A red glow pulses around the tracker button while the character has tracking abilities (Find
+-- Herbs, Find Minerals, Find Treasure, the hunter's tracks, Sense Undead and so on) and none of them
+-- is active. C_Minimap.GetTrackingInfo also lists the townsfolk and quest filters of the tracking
+-- menu (Blizzard_Minimap: OPTIONAL_FILTERS, ALWAYS_ON_FILTERS); only the entries of tracking
+-- abilities count (type "spell" or a spellID), as in the WeakAura, which read GetTrackingTexture().
+-- No glow while the player is dead or a ghost or has no full control (as in the WeakAura), with
+-- db.TrackerGlow or db.Enable off, or without a tracker button. The glow sits on
+-- MinimapCluster.Tracking.Button, which is the button in the bar with MoveTracker and Blizzard's
+-- button without it. None of the tracking functions has secret returns in WoW Forever
+-- (GetTrackingInfo only has SecretArguments = AllowedWhenUntainted).
+--------------------------------------------------------------------------------
+
+SMB.TrackerGlowEvents = {
+	'MINIMAP_UPDATE_TRACKING', 'SPELLS_CHANGED', 'PLAYER_DEAD', 'PLAYER_ALIVE', 'PLAYER_UNGHOST',
+	'PLAYER_CONTROL_GAINED', 'PLAYER_CONTROL_LOST',
+} -- and PLAYER_ENTERING_WORLD (SMB:PLAYER_ENTERING_WORLD)
+
+SMB.TrackerGlowColor = { 1, 0, 0 }
+SMB.TrackerGlowSize = 2 -- thickness of the edges; they lie just outside the button
+
+function SMB:GetTrackerButton()
+	local MinimapCluster = _G.MinimapCluster
+	local Tracking = type(MinimapCluster) == 'table' and MinimapCluster.Tracking
+	return type(Tracking) == 'table' and Tracking.Button or nil
+end
+
+-- true if the character has tracking abilities and none of them is active
+function SMB:HasInactiveTracking()
+	local C_Minimap = _G.C_Minimap
+	if not (C_Minimap and C_Minimap.GetNumTrackingTypes and C_Minimap.GetTrackingInfo) then return false end
+	local count = C_Minimap.GetNumTrackingTypes()
+	if type(count) ~= 'number' then return false end
+	local abilities = 0
+	for i = 1, count do
+		local info = C_Minimap.GetTrackingInfo(i)
+		if type(info) == 'table' and (info.type == 'spell' or info.spellID ~= nil) then
+			if info.active then return false end
+			abilities = abilities + 1
+		end
+	end
+	return abilities > 0
+end
+
+function SMB:ShouldGlowTracker()
+	local db = SMB.db
+	if not (db and db.Enable and db.TrackerGlow) or SMB.blocked then return false end
+	if _G.UnitIsDeadOrGhost and _G.UnitIsDeadOrGhost('player') then return false end
+	if _G.HasFullControl and not _G.HasFullControl() then return false end
+	return SMB:HasInactiveTracking()
+end
+
+-- The glow: a frame without mouse input over the button, four red edges with additive blending and
+-- an alpha pulse 0.35 <-> 1 (0.6 s each way, looping BOUNCE).
+function SMB:CreateTrackerGlow(button)
+	local Glow = _G.CreateFrame('Frame', nil, button)
+	Glow:EnableMouse(false)
+	local size = SMB.TrackerGlowSize
+	Glow:SetPoint('TOPLEFT', button, 'TOPLEFT', -size, size)
+	Glow:SetPoint('BOTTOMRIGHT', button, 'BOTTOMRIGHT', size, -size)
+
+	local r, g, b = unpack(SMB.TrackerGlowColor)
+	local edges = {
+		{ 'TOPLEFT', 'TOPRIGHT', nil, size },
+		{ 'BOTTOMLEFT', 'BOTTOMRIGHT', nil, size },
+		{ 'TOPLEFT', 'BOTTOMLEFT', size, nil },
+		{ 'TOPRIGHT', 'BOTTOMRIGHT', size, nil },
+	}
+	Glow.Edges = {}
+	for i, edge in ipairs(edges) do
+		local Edge = Glow:CreateTexture(nil, 'OVERLAY')
+		Edge:SetColorTexture(r, g, b, 1)
+		Edge:SetBlendMode('ADD')
+		Edge:SetPoint(edge[1], Glow, edge[1])
+		Edge:SetPoint(edge[2], Glow, edge[2])
+		if edge[3] then Edge:SetWidth(edge[3]) end
+		if edge[4] then Edge:SetHeight(edge[4]) end
+		Glow.Edges[i] = Edge
+	end
+
+	local Pulse = Glow:CreateAnimationGroup()
+	Pulse:SetLooping('BOUNCE')
+	local Alpha = Pulse:CreateAnimation('Alpha')
+	Alpha:SetFromAlpha(0.35)
+	Alpha:SetToAlpha(1)
+	Alpha:SetDuration(0.6)
+	Glow.Pulse = Pulse
+
+	Glow:Hide()
+	return Glow
+end
+
+function SMB:UpdateTrackerGlow()
+	local button = SMB:GetTrackerButton()
+	local Glow = SMB.TrackerGlow
+	local show = button ~= nil and SMB:ShouldGlowTracker()
+
+	if show and not Glow then
+		Glow = SMB:CreateTrackerGlow(button)
+		SMB.TrackerGlow = Glow
+	end
+	if not Glow then return false end
+
+	if show then
+		if Glow:GetParent() ~= button then Glow:SetParent(button) end
+		Glow:SetFrameStrata(button:GetFrameStrata())
+		Glow:SetFrameLevel(button:GetFrameLevel() + 2)
+		Glow:Show()
+		if not Glow.Pulse:IsPlaying() then Glow.Pulse:Play() end
+	else
+		Glow.Pulse:Stop()
+		Glow:Hide()
+	end
+	return show
 end
 
 --------------------------------------------------------------------------------
@@ -716,6 +852,7 @@ end
 
 function SMB:PLAYER_ENTERING_WORLD()
 	SMB:GrabMinimapButtons(true)
+	SMB:UpdateTrackerGlow()
 end
 
 function SMB:Initialize()
@@ -758,6 +895,10 @@ function SMB:Initialize()
 	end
 
 	SMB:RegisterEvent('PLAYER_ENTERING_WORLD')
+	for _, event in ipairs(SMB.TrackerGlowEvents) do
+		SMB:RegisterEvent(event, 'UpdateTrackerGlow')
+	end
 	SMB:ScheduleRepeatingTimer('GrabMinimapButtons', 6)
 	SMB:ScheduleTimer('HandleBlizzardButtons', 7)
+	SMB:UpdateTrackerGlow()
 end

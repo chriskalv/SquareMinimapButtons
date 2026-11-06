@@ -4,9 +4,11 @@
 	Ported from ProjectAzilroka (Azilroka), see LICENSE.txt.
 	The helpers in this file (Noop, TexCoords, SetTemplate, CreateShadow, SetInside, class color,
 	addon detection, reload dialog) follow ProjectAzilroka's Init.lua; the client detection, the
-	defaults of this port, the guard against a loaded ProjectAzilroka, the slash commands and the
-	Blizzard buttons after combat for option changes (RequestBlizzardButtons) are new. Start registers
-	the options (Options.lua) before Initialize, and only when the guard lets the addon run.
+	defaults of this port, the shared profile "Default" with its one-time switch for existing
+	characters, the guard against a loaded ProjectAzilroka, the slash commands (/smb,
+	/squareminimap, /squareminimapbuttons) and the Blizzard buttons after combat for option changes
+	(RequestBlizzardButtons) are new. Start registers the options (Options.lua) before Initialize,
+	and only when the guard lets the addon run.
 
 	Load order (see SquareMinimapButtons.toc): Libs, Locales, Core.lua, SquareMinimapButtons.lua,
 	Options.lua. Every file receives the addon name and the shared addon table as varargs; the other
@@ -18,7 +20,7 @@ local addonName, ns = ...
 local _G = _G
 local LibStub = _G.LibStub
 
-local type, pairs, select, format, tostring = type, pairs, select, format, tostring
+local type, pairs, ipairs, select, format, tostring = type, pairs, ipairs, select, format, tostring
 local strlower, strtrim = strlower, strtrim
 
 local SMB = LibStub('AceAddon-3.0'):NewAddon('SquareMinimapButtons', 'AceEvent-3.0', 'AceHook-3.0', 'AceTimer-3.0', 'AceConsole-3.0')
@@ -172,6 +174,10 @@ end
 -- Keys as in ProjectAzilroka's module; values after the screenshot of the requester (one column,
 -- 22 px icons; IconSize and ButtonSpacing changed to 18 and 0 on 2026-11-06 at the owner's
 -- request). MoveQueue is off in Forever until the queue button is cleared in the client.
+-- Visibility is gone (2026-11-06: WoW Forever has no pet battles, the bar is always shown), and so
+-- are the lock and the own ignore list of this port. The anchor keys stay in the profile without
+-- options: the bar is anchored to the minimap as before, and a profile that was set to a free
+-- position in an earlier test version keeps it (see ApplyBarPosition).
 --------------------------------------------------------------------------------
 
 function SMB.BuildDefaults(isForever)
@@ -188,7 +194,6 @@ function SMB.BuildDefaults(isForever)
 			ReverseDirection = false,
 			Strata = 'MEDIUM',
 			Level = 12,
-			Visibility = '[petbattle] hide; show',
 			HideGarrison = false,
 			MoveGarrison = true,
 			MoveMail = true,
@@ -197,13 +202,13 @@ function SMB.BuildDefaults(isForever)
 			MoveQueue = not isForever,
 
 			-- extensions of this port
+			TrackerGlow = true, -- red glow on the tracker button while nothing is tracked
+			-- position of the bar (no options since 2026-11-06, see above)
 			AnchorToMinimap = true,
 			Point = 'TOPLEFT',
 			RelativePoint = 'TOPLEFT',
 			X = 1,
 			Y = -1,
-			Lock = false,
-			IgnoreList = {},
 			-- BarPosition: free position of the bar (only used without AnchorToMinimap); unset by default
 		},
 	}
@@ -212,7 +217,7 @@ end
 SMB.Defaults = SMB.BuildDefaults(SMB.IsForever)
 
 -- Called on profile change, copy and reset: read the settings again and rebuild what exists
--- (position and lock of the bar, the bar, the Blizzard buttons).
+-- (position of the bar, the bar, the Blizzard buttons, the tracker glow).
 function SMB:ApplySettings()
 	if not self.data then return end
 	self.db = self.data.profile
@@ -220,6 +225,24 @@ function SMB:ApplySettings()
 	if self.ApplyBarPosition then self:ApplyBarPosition() end
 	if self.Update then self:Update() end
 	if self.HandleBlizzardButtons then self:RequestBlizzardButtons() end
+	if self.UpdateTrackerGlow then self:UpdateTrackerGlow() end
+end
+
+-- The profile "Default" is shared by all characters (AceDB:New with defaultProfile true). AceDB
+-- keeps the profile a character already uses, so a character that the first test versions put on
+-- its own profile ("Name - Realm", AceDB's choice without a default profile) would never reach
+-- "Default". Once per character (marker in the character section of the saved variables), such a
+-- character is switched to "Default"; its old profile stays and can be copied (Profiles, Copy
+-- From). A character that chose another profile is left alone, and so is every later choice.
+SMB.SharedProfileName = 'Default'
+
+function SMB:MigrateToSharedProfile(data)
+	if type(data) ~= 'table' or type(data.char) ~= 'table' or type(data.keys) ~= 'table' then return false end
+	if data.char.SharedProfileMigrated then return false end
+	data.char.SharedProfileMigrated = true
+	if data.keys.profile ~= data.keys.char then return false end
+	data:SetProfile(SMB.SharedProfileName)
+	return true
 end
 
 -- Builds the Blizzard buttons after an option or profile change. In combat this waits for
@@ -329,11 +352,15 @@ function SMB:OpenOptions()
 	return false
 end
 
+-- /smb is the main command; if another addon already uses /smb, /squareminimap and
+-- /squareminimapbuttons still work.
+SMB.SlashCommands = { 'smb', 'squareminimap', 'squareminimapbuttons' }
+
 function SMB:PrintHelp()
-	self:Message(L['Usage: /zmb [scan | reset] (also /zippyminimap)'])
-	self:Message(L['/zmb: open the options'])
-	self:Message(L['/zmb scan: scan the minimap for new buttons now'])
-	self:Message(L['/zmb reset: reset the current profile to the defaults'])
+	self:Message(L['Usage: /smb [scan | reset] (also /squareminimap and /squareminimapbuttons)'])
+	self:Message(L['/smb: open the options'])
+	self:Message(L['/smb scan: scan the minimap for new buttons now'])
+	self:Message(L['/smb reset: reset the current profile to the defaults'])
 end
 
 function SMB:SlashCommand(input)
@@ -368,15 +395,18 @@ end
 --------------------------------------------------------------------------------
 
 function SMB:OnInitialize()
-	self.data = LibStub('AceDB-3.0'):New('SquareMinimapButtonsDB', self.Defaults)
+	-- true: the shared profile "Default" instead of one profile per character
+	self.data = LibStub('AceDB-3.0'):New('SquareMinimapButtonsDB', self.Defaults, true)
+	self:MigrateToSharedProfile(self.data) -- before the callbacks: nothing is built yet
 	self.db = self.data.profile
 
 	self.data.RegisterCallback(self, 'OnProfileChanged', 'ApplySettings')
 	self.data.RegisterCallback(self, 'OnProfileCopied', 'ApplySettings')
 	self.data.RegisterCallback(self, 'OnProfileReset', 'ApplySettings')
 
-	self:RegisterChatCommand('zmb', 'SlashCommand')
-	self:RegisterChatCommand('zippyminimap', 'SlashCommand')
+	for _, command in ipairs(self.SlashCommands) do
+		self:RegisterChatCommand(command, 'SlashCommand')
+	end
 end
 
 -- OnEnable runs at PLAYER_LOGIN. If ProjectAzilroka is loaded but has not set its profile yet, decide

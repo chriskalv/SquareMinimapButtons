@@ -1,8 +1,9 @@
 -- Test group 5 (bar): Initialize and Update after ProjectAzilroka's Modules/SquareMinimapButtons.lua
 -- (Initialize 522-558, Update 379-452, OnDragStart/OnDragStop 371-377), with the changes of the
--- port: position from the profile (anchored to the minimap by default), dragging of the bar itself
--- with a saved position, the lock, IsShown() for buttons already in the bar, Update after combat,
--- rebuild on profile changes.
+-- port: position from the profile (anchored to the minimap by default; the anchor keys have no
+-- options since nachtrag 2), dragging of the bar itself with a saved position, IsShown() for
+-- buttons already in the bar, no visibility driver (nachtrag 2), Update after combat, rebuild on
+-- profile changes.
 
 local function fresh(config)
     ReloadAddon(config or {})
@@ -10,12 +11,12 @@ local function fresh(config)
     return GetAddon()
 end
 
--- a profile stored in the saved variables for the character Zippy - Forever
+-- the shared profile Default, stored in the saved variables for the character Zippy - Forever
 local function withProfile(values, config)
     config = config or {}
     config.savedVariables = {
-        profileKeys = { ["Zippy - Forever"] = "Zippy - Forever" },
-        profiles = { ["Zippy - Forever"] = values },
+        profileKeys = { ["Zippy - Forever"] = "Default" },
+        profiles = { Default = values },
     }
     return config
 end
@@ -423,20 +424,19 @@ describe("grid (Update)", function()
         assert_eq(StubState(buttons[1]).elvTemplate, { "Transparent", true })
     end)
 
-    it("without visible buttons: driver off and Hide, no fade, the bar stays hidden", function()
+    it("without visible buttons: Hide, no fade, the bar stays hidden; never a state driver", function()
         local SMB = fresh()
         local hides = 0
         SMB.Bar:HookScript("OnHide", function() hides = hides + 1 end)
         local buttons = addButtons(2)
         SMB:GrabMinimapButtons()
-        assert_eq(STUB.stateDrivers[SMB.Bar].visibility, "[petbattle] hide; show")
+        assert_true(SMB.Bar:IsShown())
         buttons[1]:Hide()
         buttons[2]:Hide()
-        STUB.stateDriverLog = {}
         STUB.fades = {}
         SMB:Update()
-        assert_nil(STUB.stateDrivers[SMB.Bar].visibility, "driver unregistered")
-        assert_eq(STUB.stateDriverLog, { { action = "unregister", frame = SMB.Bar, state = "visibility" } })
+        assert_eq(STUB.stateDriverLog, {}, "no RegisterStateDriver or UnregisterStateDriver (no pet battles in Forever)")
+        assert_nil(STUB.stateDrivers[SMB.Bar])
         assert_eq(hides, 1, "Hide called")
         assert_eq({ SMB.Bar:GetSize() }, { 0, 18 }, "Spacing wide, one row high")
         -- ProjectAzilroka fades the bar in after hiding it (447-451), and UIFrameFadeIn shows the
@@ -460,35 +460,29 @@ describe("grid (Update)", function()
     end)
 end)
 
-describe("bar hidden by its driver (pet battle), then Update", function()
-    it("the bar and its driver come back (IsShown for buttons in the bar)", function()
+describe("hidden bar, then Update", function()
+    it("a bar hidden from outside comes back with its buttons (IsShown for buttons in the bar)", function()
         local SMB = fresh()
         local buttons = addButtons(5)
         SMB:GrabMinimapButtons()
         local Bar = SMB.Bar
-        assert_true(SetStateDriverHidden(Bar, true), "driver registered")
-        assert_false(Bar:IsShown())
+        Bar:Hide() -- for example by another addon
         assert_false(buttons[1]:IsVisible(), "the buttons are not visible in the hidden bar")
         SMB:Update() -- for example from the HandleBlizzardButtons timer or an option
-        assert_eq(STUB.stateDrivers[Bar].visibility, "[petbattle] hide; show", "driver still registered")
         assert_true(Bar:IsShown())
         assert_eq({ Bar:GetSize() }, { 18, 90 })
         assert_eq(layout(SMB, buttons), {
             { "TOPLEFT", 0, 0 }, { "TOPLEFT", 0, -18 }, { "TOPLEFT", 0, -36 }, { "TOPLEFT", 0, -54 }, { "TOPLEFT", 0, -72 },
         })
-        -- the end of the pet battle shows the bar through its driver
-        SetStateDriverHidden(Bar, true)
-        assert_true(SetStateDriverHidden(Bar, false))
-        assert_true(Bar:IsShown())
+        assert_eq(STUB.stateDriverLog, {}, "no state driver at any time")
     end)
 
     -- Counter-check against the original (IsVisible() for every button, ProjectAzilroka 400): in the
-    -- hidden bar no button is visible, Update counts zero, unregisters the driver and shrinks the
-    -- bar to Spacing x (2 * Spacing + IconSize); this test then fails at "driver still registered" (mutation probe in the
-    -- report of package 3).
+    -- hidden bar no button is visible, Update counts zero and hides the bar for good; this test then
+    -- fails at "Bar:IsShown()".
 end)
 
-describe("dragging and lock (without ElvUI and Tukui)", function()
+describe("dragging (without ElvUI and Tukui)", function()
     local function free(config)
         local SMB = fresh(config)
         SMB.db.AnchorToMinimap = false
@@ -529,20 +523,14 @@ describe("dragging and lock (without ElvUI and Tukui)", function()
         assert_eq(SMB.db.BarPosition, { "CENTER", "CENTER", 10, 20 })
     end)
 
-    it("with Lock nothing moves, neither by the bar nor by a button", function()
+    it("the lock is gone: a stale db.Lock from an old profile does not stop the dragging", function()
         local SMB = free()
         SMB.db.Lock = true
-        local buttons = addButtons(1)
-        SMB:GrabMinimapButtons()
+        assert_true(SMB:CanDragBar())
         SetMoveTarget(SMB.Bar, "CENTER", "CENTER", 10, 20)
         SMB.Bar:GetScript("OnDragStart")(SMB.Bar, "LeftButton")
         SMB.Bar:GetScript("OnDragStop")(SMB.Bar)
-        buttons[1]:GetScript("OnDragStart")(buttons[1], "LeftButton")
-        buttons[1]:GetScript("OnDragStop")(buttons[1])
-        assert_nil(STUB.calls.StartMoving)
-        assert_nil(STUB.calls.StopMovingOrSizing)
-        assert_nil(SMB.db.BarPosition)
-        assert_eq({ SMB.Bar:GetPoint() }, { "RIGHT", UIParent, "RIGHT", -45, 0 })
+        assert_eq(SMB.db.BarPosition, { "CENTER", "CENTER", 10, 20 })
     end)
 
     it("anchored to the minimap (default) nothing moves either", function()
@@ -628,9 +616,9 @@ describe("profile change", function()
         for k, v in pairs(noBlizzard) do other[k] = v end
         return {
             savedVariables = {
-                profileKeys = { ["Zippy - Forever"] = "Zippy - Forever" },
+                profileKeys = { ["Zippy - Forever"] = "Default" },
                 profiles = {
-                    ["Zippy - Forever"] = CopyTable(noBlizzard),
+                    Default = CopyTable(noBlizzard),
                     Other = other,
                 },
             },
@@ -646,7 +634,7 @@ describe("profile change", function()
         assert_eq({ SMB.Bar:GetSize() }, { 90, 18 }, "Update ran")
         assert_eq(layout(SMB, buttons)[5], { "TOPLEFT", 72, 0 })
         assert_eq({ SMB.Bar:GetPoint() }, { "TOP", UIParent, "TOP", 0, -50 }, "position set again")
-        SMB.data:SetProfile("Zippy - Forever")
+        SMB.data:SetProfile("Default")
         assert_eq({ SMB.Bar:GetSize() }, { 18, 90 })
         assert_eq({ SMB.Bar:GetPoint() }, { "TOPLEFT", Minimap, "TOPLEFT", 1, -1 })
     end)

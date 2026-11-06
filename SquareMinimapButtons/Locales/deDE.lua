@@ -14,7 +14,6 @@ L['General'] = 'Allgemein'
 L['Blizzard'] = true
 L['Authors:'] = 'Autoren:'
 L['This setting requires that you reload your User Interface.'] = 'Diese Einstellung erfordert, dass Du Deine Benutzeroberfläche neu laden musst.'
-L['Profiles'] = 'Profile'
 
 -- Options of the Square Minimap Buttons module (ProjectAzilroka)
 L['Minimap Buttons / Bar'] = 'Minikarte Tasten / Leiste'
@@ -28,7 +27,6 @@ L['Shadows'] = 'Schatten'
 L['Reverse Direction'] = 'Rückwärtsrichtung'
 L['Frame Strata'] = 'Fenster Schicht'
 L['Frame Level'] = 'Fenster Ebene'
-L['Visibility'] = 'Sichtbarkeit'
 L['Hide Garrison'] = 'Verstecke Garnision'
 L['Move Garrison Icon'] = 'Garnision Symbol bewegen'
 L['Move Mail Icon'] = 'Post Symbol bewegen'
@@ -39,33 +37,20 @@ L['Move Queue Status Icon'] = 'LFG Symbol bewegen'
 -- WoW Forever port: options header
 L['WoW Forever port:'] = 'Portierung für WoW Forever:'
 
--- WoW Forever port: extensions (anchor to the minimap, lock, own ignore list)
-L['Extensions'] = 'Erweiterungen'
-L['Anchor to Minimap'] = 'An Minikarte binden'
-L['Keeps the bar attached to the minimap. When disabled, the bar can be moved freely like in ProjectAzilroka.'] = 'Hält die Leiste an der Minikarte. Ausgeschaltet lässt sich die Leiste wie in ProjectAzilroka frei verschieben.'
-L['Point'] = 'Punkt'
-L['Relative Point'] = 'Bezugspunkt'
-L['X Offset'] = 'Versatz X'
-L['Y Offset'] = 'Versatz Y'
-L['Lock Bar'] = 'Leiste sperren'
-L['Prevents the bar from being dragged.'] = 'Verhindert, dass die Leiste verschoben wird.'
-L['Ignore List'] = 'Eigene Ignorierliste'
-L['Buttons that stay on the minimap: one frame name or Lua pattern per line.'] = 'Knöpfe, die auf der Minikarte bleiben: ein Framename oder Lua-Muster je Zeile.'
+-- WoW Forever port: Blizzard tab
 L["Disabled while ElvUI's queue status mover is active."] = 'Gesperrt, solange ElvUIs Mover für den Warteschlangen-Status aktiv ist.'
-L['Point of the bar that is attached to the minimap.'] = 'Punkt der Leiste, der an der Minikarte hängt.'
-L['Point of the minimap that the bar is attached to.'] = 'Punkt der Minikarte, an dem die Leiste hängt.'
-L['The ElvUI or Tukui mover holds the position of the bar, so the anchor options are disabled.'] = 'Der Mover von ElvUI oder Tukui hält die Lage der Leiste, deshalb sind die Ankeroptionen gesperrt.'
-L['A button that is already in the bar stays there until you reload your User Interface.'] = 'Ein Knopf, der schon in der Leiste ist, bleibt dort bis zum Neuladen der Benutzeroberfläche.'
+L['Glowing Tracker Icon when not tracking'] = 'Tracker-Symbol leuchtet, wenn nichts verfolgt wird'
+L['A red glow pulses around the tracker icon while none of your tracking abilities (for example Find Herbs or Find Minerals) is active. Only takes effect when your character can track something.'] = 'Ein roter Schein pulsiert um das Tracker-Symbol, solange keine Aufspürfähigkeit (etwa Kräutersuche oder Mineraliensuche) aktiv ist. Greift nur, wenn der Charakter etwas verfolgen kann.'
 
 -- WoW Forever port: guard against ProjectAzilroka
 L['ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled, so this addon stays inactive. Disable one of the two to avoid conflicts.'] = 'ProjectAzilroka ist geladen und dessen Modul Square Minimap Buttons ist aktiv, deshalb bleibt dieses Addon inaktiv. Deaktiviere eines der beiden, um Konflikte zu vermeiden.'
 L['ProjectAzilroka is loaded, but its settings could not be read, so this addon stays inactive. Disable one of the two to avoid conflicts.'] = 'ProjectAzilroka ist geladen, aber dessen Einstellungen konnten nicht gelesen werden, deshalb bleibt dieses Addon inaktiv. Deaktiviere eines der beiden, um Konflikte zu vermeiden.'
 
 -- WoW Forever port: slash command
-L['Usage: /zmb [scan | reset] (also /zippyminimap)'] = 'Aufruf: /zmb [scan | reset] (auch /zippyminimap)'
-L['/zmb: open the options'] = '/zmb: Optionen öffnen'
-L['/zmb scan: scan the minimap for new buttons now'] = '/zmb scan: Minikarte sofort nach neuen Knöpfen durchsuchen'
-L['/zmb reset: reset the current profile to the defaults'] = '/zmb reset: aktuelles Profil auf die Standardwerte zurücksetzen'
+L['Usage: /smb [scan | reset] (also /squareminimap and /squareminimapbuttons)'] = 'Aufruf: /smb [scan | reset] (auch /squareminimap und /squareminimapbuttons)'
+L['/smb: open the options'] = '/smb: Optionen öffnen'
+L['/smb scan: scan the minimap for new buttons now'] = '/smb scan: Minikarte sofort nach neuen Knöpfen durchsuchen'
+L['/smb reset: reset the current profile to the defaults'] = '/smb reset: aktuelles Profil auf die Standardwerte zurücksetzen'
 L['The options are not available yet.'] = 'Die Optionen sind noch nicht verfügbar.'
 L['Scanning is not available yet.'] = 'Die Suche nach Knöpfen ist noch nicht verfügbar.'
 L['The current profile was reset to the defaults.'] = 'Das aktuelle Profil wurde auf die Standardwerte zurückgesetzt.'

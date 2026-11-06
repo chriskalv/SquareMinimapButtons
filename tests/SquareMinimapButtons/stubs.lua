@@ -158,6 +158,8 @@ local IS_A = {
     CheckButton = { CheckButton = true, Button = true, Frame = true },
     DropdownButton = { DropdownButton = true, Button = true, Frame = true },
     Texture = { Texture = true, TextureBase = true, Region = true },
+    -- the brief of nachtrag 2: a MaskTexture answers IsObjectType('Texture') with true
+    MaskTexture = { MaskTexture = true, Texture = true, TextureBase = true, Region = true },
     FontString = { FontString = true, Region = true },
 }
 
@@ -415,17 +417,24 @@ function Frame:CreateFontString(name, layer, template)
     S[fs].fontObject = template
     return fs
 end
+-- Animation groups: Play/Stop/IsPlaying, the looping type and the animations with the values set
+-- on them (group.animations[i].calls.SetFromAlpha = { 0.35 } and so on) for the tests.
 function Frame:CreateAnimationGroup()
-    local group = {}
+    local group = { animations = {}, parent = self }
     local playing = false
     function group:Play() playing = true end
     function group:Stop() playing = false end
     function group:IsPlaying() return playing end
-    function group:SetLooping() end
+    function group:SetLooping(looping) group.looping = looping end
+    function group:GetLooping() return group.looping or "NONE" end
     function group:SetScript() end
-    function group:CreateAnimation()
-        local anim = {}
-        setmetatable(anim, { __index = function() return function() end end })
+    function group:SetToFinalAlpha(v) group.toFinalAlpha = v end
+    function group:CreateAnimation(animType)
+        local anim = { type = animType, calls = {} }
+        setmetatable(anim, { __index = function(_, key)
+            return function(_, ...) anim.calls[key] = { ... } end
+        end })
+        group.animations[#group.animations + 1] = anim
         return anim
     end
     return group
@@ -534,8 +543,25 @@ function Texture:SetDrawLayer(layer, sublevel) local s = st(self); s.layer, s.su
 function Texture:GetDrawLayer() local s = st(self); return s.layer, s.sublevel end
 function Texture:SetMask(mask) st(self).mask = mask end
 function Texture:GetMask() return st(self).mask end
-function Texture:AddMaskTexture(mask) st(self).maskTexture = mask end
-function Texture:RemoveMaskTexture() st(self).maskTexture = nil end
+-- Masks: a list per texture (AddMaskTexture appends, RemoveMaskTexture removes that mask).
+function Texture:AddMaskTexture(mask)
+    local s = st(self)
+    s.masks = s.masks or {}
+    for _, m in ipairs(s.masks) do if m == mask then return end end
+    s.masks[#s.masks + 1] = mask
+    s.maskTexture = mask
+end
+function Texture:RemoveMaskTexture(mask)
+    local s = st(self)
+    s.masks = s.masks or {}
+    for i = #s.masks, 1, -1 do
+        if s.masks[i] == mask then table.remove(s.masks, i) end
+    end
+    s.maskTexture = s.masks[#s.masks]
+    STUB.calls.RemoveMaskTexture = (STUB.calls.RemoveMaskTexture or 0) + 1
+end
+function Texture:GetNumMaskTextures() return #(st(self).masks or {}) end
+function Texture:GetMaskTexture(i) return (st(self).masks or {})[i] end
 function Texture:SetDesaturated(v) st(self).desaturated = v end
 function Texture:IsDesaturated() return st(self).desaturated end
 function Texture:SetBlendMode(mode) st(self).blendMode = mode end
@@ -973,6 +999,24 @@ local function installClientState(config)
     IsLoggedIn = function() return STUB.loggedIn end
     InCombatLockdown = function() return STUB.combat end
     C_PetBattles = { IsInBattle = function() return STUB.petBattle end }
+    -- Tracking (MinimapDocumentation.lua: GetNumTrackingTypes, GetTrackingInfo returning a
+    -- MinimapScriptTrackingInfo { name, texture, active, type, subType, spellID? }). STUB.tracking
+    -- holds the entries; SetTracking(list) replaces them (see below).
+    C_Minimap = {
+        GetNumTrackingTypes = function() return #STUB.tracking end,
+        GetTrackingInfo = function(index)
+            local entry = STUB.tracking[index]
+            if not entry then return nil end
+            local info = {}
+            for k, v in pairs(entry) do info[k] = v end
+            return info
+        end,
+        SetTracking = function(index, on)
+            if STUB.tracking[index] then STUB.tracking[index].active = on and true or false end
+        end,
+    }
+    UnitIsDeadOrGhost = function(unit) return unit == "player" and STUB.dead == true end
+    HasFullControl = function() return STUB.control ~= false end
     HasNewMail = function() return STUB.newMail end
     GetPhysicalScreenSize = function() return 1920, 1080 end
     GetScreenWidth = function() return 1920 end
@@ -1273,6 +1317,7 @@ function InstallStubs(config)
         stateDrivers = {}, stateDriverLog = {}, fades = {}, calls = {}, settings = { categories = {}, registered = {}, opened = {}, blizOptions = {}, dialogOpened = {}, defaultSize = {} },
         textureFileIDs = {}, loggedIn = config.loggedIn == true, combat = config.combat == true,
         petBattle = config.petBattle == true, newMail = config.newMail == true,
+        tracking = config.tracking or {}, dead = config.dead == true, control = config.control ~= false,
     }
     installLuaHelpers()
     installMixins()
@@ -1355,6 +1400,20 @@ function StartClient()
     AdvanceTime(0)
     FireEvent("PLAYER_ENTERING_WORLD", true, false)
 end
+
+-- Tracking entries as C_Minimap.GetTrackingInfo returns them. TRACKING_SPELL(name, active, id) is
+-- a tracking ability (type "spell"), TRACKING_TOWNSFOLK(name, active) a townsfolk filter of the
+-- tracking menu (type "other", no spellID). SetTrackingList replaces the list; fire
+-- MINIMAP_UPDATE_TRACKING to tell the addon.
+function TRACKING_SPELL(name, active, spellID)
+    return { name = name, texture = 136025, active = active == true, type = "spell", subType = 0, spellID = spellID }
+end
+function TRACKING_TOWNSFOLK(name, active)
+    return { name = name, texture = 136456, active = active == true, type = "other", subType = 1 }
+end
+function SetTrackingList(list) STUB.tracking = list end
+function SetPlayerDead(dead) STUB.dead = dead and true or false end
+function SetFullControl(control) STUB.control = control and true or false end
 
 -- New mail arrives or is read: HasNewMail() and the event UPDATE_PENDING_MAIL.
 function SetNewMail(hasMail)
