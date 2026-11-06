@@ -8,24 +8,47 @@ Port of the *Square Minimap Buttons* module of [ProjectAzilroka](https://github.
 
 ### Scan, skinning and locking
 
-- **Scan** (`/zmb scan`, on entering the world and every 6 seconds): every child of the minimap that is a button is taken, except names on the fixed ignore list of ProjectAzilroka (25 names such as `GameTimeFrame`, `MinimapBackdrop`, `QueueStatusButton`, `TimeManagerClockButton`), names on the own ignore list, buttons already skinned, map pins (HereBeDragons, HandyNotes, TomCat Tours, Zygor, GatherMate2, Questie, TomTom) and unnamed buttons without an icon. Nothing is scanned in combat or in a pet battle.
-- **Own ignore list** (*Ignore List* in the options): button names or Lua patterns; an entry matches if it equals the name or is found in it as a pattern. An invalid pattern only matches literally.
-- **Skinning**: border, background and highlight textures (for example those of LibDBIcon buttons) are emptied; the other textures of the button and its direct children are fitted 1 px inside their frame (the button, or the child they belong to), without mask, and cropped like ElvUI icons if they show the full texture (0.08 per side, or after ElvUI's *cropIcon*). The button gets the icon size, the strata of the minimap and its level + 10, the backdrop and, with *Shadows*, a shadow (unless the button sets `ignoreTemplate`).
+- **Scan** (`/smb scan`, on entering the world and every 6 seconds): every child of the minimap that is a button is taken, except names on the fixed ignore list of ProjectAzilroka (25 names such as `GameTimeFrame`, `MinimapBackdrop`, `QueueStatusButton`, `TimeManagerClockButton`), buttons already skinned, map pins (HereBeDragons, HandyNotes, TomCat Tours, Zygor, GatherMate2, Questie, TomTom) and unnamed buttons without an icon. Nothing is scanned in combat or in a pet battle.
+- **Skinning**: border, background and highlight textures (for example those of LibDBIcon buttons) are emptied; the other textures of the button and its direct children are fitted 1 px inside their frame (the button, or the child they belong to), without mask, and cropped like ElvUI icons if they show the full texture (0.08 per side, or after ElvUI's *cropIcon*). Mask textures are never emptied, moved or cropped; masks on a skinned texture are taken off it (see [Masks on button icons](#masks-on-button-icons)). The button gets the icon size, the strata of the minimap and its level + 10, the backdrop and, with *Shadows*, a shadow (unless the button sets `ignoreTemplate`).
 - **Locking**: while a button sits in the bar, its position methods (`SetParent`, `ClearAllPoints`, `SetPoint`, `SetSize`, `SetScale`, `SetIgnoreParentScale`, `SetFrameStrata`, `SetFrameLevel`) do nothing and strata and level are fixed, so that the addon owning the button cannot move it out again.
 
 ### The bar
 
 - **Layout**: the buttons are laid out in the order they were found, `ButtonsPerRow` per row (default 1, so one column from the top), `IconSize` 18 and `ButtonSpacing` 0 apart and from the edge, from the top left corner (with *Reverse Direction* from the top right). The bar takes the size of its buttons, gets the backdrop (*Bar Backdrop*), the strata and level of the profile (buttons one level higher) and only counts buttons that are shown. Without buttons it is hidden.
-- **Position**: by default the bar is anchored to the minimap, its top left corner 1 px inside the top left corner of the minimap (point, relative point and offset in the profile). Without that anchor it stands where it was dragged last (saved in the profile) or, if it was never dragged, at the right screen edge like in ProjectAzilroka.
-- **Dragging and lock**: without ElvUI and Tukui the bar is dragged with the left mouse button, on the bar or on one of its buttons; the position is saved in the profile. Nothing moves while the bar is anchored to the minimap or locked (*Lock Bar*). With ElvUI the bar has ElvUI's mover *SquareMinimapButtonBar Anchor* (frame name `SquareMinimapButtonBarMover`, as in ProjectAzilroka, so a mover position from an ElvUI profile applies), which starts at the position from the profile; with Tukui it is registered with Tukui's movers.
+- **Position**: the bar is anchored to the minimap, its top left corner 1 px inside the top left corner of the minimap. Since the changes after the first client test there are no options for the position; the keys `AnchorToMinimap`, `Point`, `RelativePoint`, `X`, `Y` and `BarPosition` stay in the profile (defaults `true`, `TOPLEFT`, `TOPLEFT`, 1, -1, none), so that a profile set to a free position by an earlier test version keeps it: without the anchor the bar stands where it was dragged last or, if it was never dragged, at the right screen edge like in ProjectAzilroka.
+- **Dragging**: without ElvUI and Tukui the bar can be dragged with the left mouse button, on the bar or on one of its buttons, but only while it is not anchored to the minimap (so not with the defaults); the position is saved in the profile. The lock (*Lock Bar*) of the first test versions is gone. With ElvUI the bar has ElvUI's mover *SquareMinimapButtonBar Anchor* (frame name `SquareMinimapButtonBarMover`, as in ProjectAzilroka, so a mover position from an ElvUI profile applies), which starts at the position from the profile; with Tukui it is registered with Tukui's movers.
 - **Fading**: with *Bar MouseOver* the bar fades out and fades in while the mouse is over the bar or one of its buttons.
-- **Visibility**: a macro condition (*Visibility*, default `[petbattle] hide; show`) shows or hides the bar.
+- **Visibility**: the bar is shown whenever it has buttons. WoW Forever has no pet battles, so the macro condition of ProjectAzilroka (*Visibility*, `[petbattle] hide; show`) and its state driver are gone.
 - **Combat**: the bar is rebuilt only out of combat; a rebuild asked for in combat follows when combat ends.
-- **Profiles**: changing, copying or resetting the profile sets the position again and rebuilds the bar and the Blizzard buttons.
+- **Profiles**: changing, copying or resetting the profile sets the position again and rebuilds the bar, the Blizzard buttons and the tracker glow.
+
+### Tracker glow
+
+With *Glowing Tracker Icon when not tracking* (tab *Blizzard*, on by default) a red glow pulses around the tracking button while the character has tracking abilities (Find Herbs, Find Minerals, Find Treasure, Find Fish, the hunter's tracks, Sense Undead, Sense Demons and so on) and none of them is active. It replaces Zippy's earlier WeakAura for the same purpose.
+
+- **Source**: `C_Minimap.GetNumTrackingTypes()` and `C_Minimap.GetTrackingInfo(i)` (`MinimapScriptTrackingInfo`: `name`, `texture`, `active`, `type`, `subType`, `spellID`). The list also holds the townsfolk and quest filters of the tracking menu (repair, flight master, banker and so on; Blizzard_Minimap `MinimapConstants`: `OPTIONAL_FILTERS`, `ALWAYS_ON_FILTERS`), which are often on. Only entries of tracking abilities count (`type` `"spell"` or a `spellID`), as in the WeakAura, which read `GetTrackingTexture()`. No ability, or one of them active: no glow.
+- **No glow** while the character is dead or a ghost (`UnitIsDeadOrGhost("player")`) or has no full control (`HasFullControl()`, for example on a flight path), as in the WeakAura; also not with the option or *Enable* off, or while the guard against ProjectAzilroka keeps the addon inactive. Turning the option or *Enable* off hides the glow at once, without a reload.
+- **Events**: `MINIMAP_UPDATE_TRACKING`, `PLAYER_ENTERING_WORLD`, `SPELLS_CHANGED`, `PLAYER_DEAD`, `PLAYER_ALIVE`, `PLAYER_UNGHOST`, `PLAYER_CONTROL_GAINED`, `PLAYER_CONTROL_LOST`, through the addon's AceEvent registration; also after every rebuild of the bar and every profile change.
+- **Where**: on `MinimapCluster.Tracking.Button`, which is the button in the bar with *Move Tracker Icon* and Blizzard's button at the minimap without it. The glow is a frame without mouse input (`EnableMouse(false)`) 2 px outside the button, two levels above it in the button's strata, with four red edges (`SetColorTexture`, blend mode `ADD`, no texture file) and an alpha pulse 0.35 to 1 and back, 0.6 s each way (`AnimationGroup` with `SetLooping("BOUNCE")`). The button's size and hit area do not change. Nothing of this is secret in WoW Forever: `GetTrackingInfo` only has `SecretArguments = AllowedWhenUntainted` and no secret returns.
+- **Clients**: WoW Forever and Retail (where the tracking button is `MinimapCluster.Tracking.Button`); hidden in Classic, like *Move Tracker Icon*.
+
+### Masks on button icons
+
+Some addons put a round mask on the icon of their LibDBIcon button. *Connoisseur & Restocker* does this in WoW Forever and Retail (`Features/Minimap-Button.lua:22-31` in its source, commit `a6314a9`): it sets the icon to 20 x 20 at the center, creates a mask texture with the file ID 130924 (`Interface\CharacterFrame\TempPortraitAlphaMask`) on the button and adds it to the icon with `AddMaskTexture`; the icon itself is the best food and changes at run time (`UpdateMinimapIcon`, `:41-58`).
+
+A mask texture is a texture object too (`IsObjectType("Texture")`), and 130924 is on the list of files the skin removes (`RemoveTextureID`, `SquareMinimapButtons.lua:92`; ProjectAzilroka `Modules/SquareMinimapButtons.lua:56`), from a time when that file was only used as a visible round texture. The skin of ProjectAzilroka and of this port up to the first client test therefore emptied the mask (`SetTexture()` in `SkinMinimapButton`, ProjectAzilroka `:297-303`), and an empty mask hides the whole icon: the button in the bar was an empty frame.
+
+Now (`SquareMinimapButtons.lua:405-458`, generic, no special case for that addon):
+
+- `SkinMinimapButton` and `HandleRegion` skip regions whose `GetObjectType()` is `"MaskTexture"`: they are never emptied, moved or cropped, and the addon may keep its mask.
+- Every texture the skin fits into the button loses its masks (`GetNumMaskTextures`, `GetMaskTexture`, `RemoveMaskTexture`): the square skin needs no round mask, and a foreign mask would cut the cropped icon. If the client returns the count or a mask as a secret value (these functions have `SecretReturnsForAspect` *Hierarchy*), nothing is changed.
+- 130924 stays on the list, because as an ordinary texture it is still a round border.
+
+The functions exist in WoW Forever (`SimpleTextureAPIDocumentation.lua`: `AddMaskTexture`, `GetMaskTexture`, `GetNumMaskTextures`, `RemoveMaskTexture`; `SimpleFrameAPIDocumentation.lua`: `CreateMaskTexture`).
 
 ### Next to ProjectAzilroka
 
-If ProjectAzilroka is loaded at the same time and its Square Minimap Buttons module is enabled, this addon stays inactive and says so once in the chat. The same happens, with its own message, when ProjectAzilroka is loaded but its settings cannot be read. While the addon is inactive it adds no options, and `/zmb` and `/zmb scan` only repeat that message.
+If ProjectAzilroka is loaded at the same time and its Square Minimap Buttons module is enabled, this addon stays inactive and says so once in the chat. The same happens, with its own message, when ProjectAzilroka is loaded but its settings cannot be read. While the addon is inactive it adds no options, and `/smb` and `/smb scan` only repeat that message.
 
 ## Requirements
 
@@ -45,20 +68,20 @@ Alternatively copy the folder `SquareMinimapButtons` from the repository into `I
 
 | Command | Effect |
 |---|---|
-| `/zmb` or `/zippyminimap` | open the options dialog |
-| `/zmb scan` | scan the minimap for new buttons now |
-| `/zmb reset` | reset the current profile to the defaults |
-| `/zmb` with anything else | print the usage |
+| `/smb`, `/squareminimap` or `/squareminimapbuttons` | open the options dialog |
+| `/smb scan` | scan the minimap for new buttons now |
+| `/smb reset` | reset the current profile to the defaults |
+| `/smb` with anything else | print the usage (it names all three commands) |
 
-The addon compartment entry opens the options as well.
+`scan` and `reset` work with each of the three commands. If another addon already uses `/smb`, `/squareminimap` and `/squareminimapbuttons` still work. The addon compartment entry opens the options as well. `/zmb` and `/zippyminimap` of the first test versions are gone.
 
 ## Options
 
-`/zmb`, `/zippyminimap` and the addon compartment entry open the options dialog. The same options are in the game settings under *Square Minimap Buttons* (with *Profiles* as a subcategory) and, with ElvUI, in ElvUI's options under *Square Minimap Buttons*. The tree follows ProjectAzilroka's (labels in English and German as there); the group *Extensions* is new.
+`/smb` (or `/squareminimap`, `/squareminimapbuttons`) and the addon compartment entry open the options dialog. It has three tabs: **General**, **Blizzard** and **Profiles**. The same tabs are in the game settings under *Square Minimap Buttons* and, with ElvUI, in ElvUI's options under *Square Minimap Buttons* (there without *Profiles*, ElvUI has its own). The settings follow ProjectAzilroka's (labels in English and German as there).
 
-| Option | Group | Default (WoW Forever) | Range | Effect |
+| Option | Tab | Default (WoW Forever) | Range | Effect |
 |---|---|---|---|---|
-| *Enable* | top | on | toggle | off: reload dialog (the bar goes away with the reload); on: builds the bar if it does not exist yet |
+| *Enable* | General | on | toggle | off: reload dialog (the bar goes away with the reload), the tracker glow goes at once; on: builds the bar if it does not exist yet |
 | *Enable Bar* | General > Minimap Buttons / Bar | on | toggle | without the bar the buttons are only skinned where they are, and no Blizzard buttons are added; turning it off takes effect after a reload (the bar stays until then, without a reload dialog) |
 | *Bar MouseOver* | same | off | toggle | the bar fades out and fades in under the mouse |
 | *Bar Backdrop* | same | on | toggle | backdrop of the bar |
@@ -67,24 +90,43 @@ The addon compartment entry opens the options as well.
 | *Buttons Per Row* | same | 1 | 1 to 100 | columns per row |
 | *Shadows* | same | on | toggle | shadows, only with AddOnSkins, ElvUI or Tukui |
 | *Reverse Direction* | same | off | toggle | lay out from the top right |
-| *Visibility* | same | `[petbattle] hide; show` | macro condition | shows or hides the bar |
 | *Frame Strata* | General | `MEDIUM` | eight strata | strata of the bar and its buttons |
 | *Frame Level* | General | 12 | 0 to 255 | level of the bar (buttons one higher) |
-| *Hide Garrison*, *Move Garrison Icon* | General > Blizzard | off, on | toggle | no effect (as in ProjectAzilroka); each disables the other; hidden in WoW Forever and Classic |
-| *Move Mail Icon* | same | on | toggle | own mail button in the bar |
-| *Move Game Time Frame* | same | on | toggle | calendar button in the bar; hidden in Retail |
-| *Move Tracker Icon* | same | on | toggle | tracking button in the bar; hidden in Classic |
-| *Move Queue Status Icon* | same | off (Retail, Classic: on) | toggle | queue button in the bar; hidden in Classic, disabled with a hint while ElvUI's queue module holds the button |
-| *Anchor to Minimap* | Extensions | on | toggle | the bar is attached to the minimap; off: free position, draggable as in ProjectAzilroka |
-| *Point*, *Relative Point* | Extensions | `TOPLEFT`, `TOPLEFT` | nine points | point of the bar at the point of the minimap (only with *Anchor to Minimap*) |
-| *X Offset*, *Y Offset* | Extensions | 1, -1 | -200 to 200 | offset from the minimap (only with *Anchor to Minimap*) |
-| *Lock Bar* | Extensions | off | toggle | the bar cannot be dragged |
-| *Ignore List* | Extensions | empty | one entry per line | frame names or Lua patterns of buttons that stay on the minimap; blank lines, duplicates and spaces around an entry are dropped; scans again at once, a button already in the bar stays until the next reload |
+| *Hide Garrison*, *Move Garrison Icon* | Blizzard | off, on | toggle | no effect (as in ProjectAzilroka); each disables the other; hidden in WoW Forever and Classic |
+| *Move Game Time Frame* | Blizzard | on | toggle | calendar button in the bar; hidden in Retail |
+| *Move Mail Icon* | Blizzard | on | toggle | own mail button in the bar |
+| *Move Tracker Icon* | Blizzard | on | toggle | tracking button in the bar; hidden in Classic |
+| *Glowing Tracker Icon when not tracking* | Blizzard | on | toggle | red glow around the tracking button while the character can track something but tracks nothing (see [Tracker glow](#tracker-glow)); hidden in Classic |
+| *Move Queue Status Icon* | Blizzard | off (Retail, Classic: on) | toggle | queue button in the bar; hidden in Classic, disabled with a hint while ElvUI's queue module holds the button |
 
-- Changes to *General* rebuild the bar, changes to *Blizzard* build the buttons turned on at once; turning off a Blizzard button that is already in the bar shows the reload dialog. In combat both wait until combat ends.
-- With ElvUI's or Tukui's mover the mover holds the position of the bar: the group *Extensions* says so, and *Anchor to Minimap*, the points and the offsets are disabled; *Lock Bar* stays available.
-- **Profiles**: the profile page of AceDBOptions (choose, create, copy, delete, reset); one profile per character by default. A profile change rebuilds the bar. The settings are saved in `SquareMinimapButtonsDB`.
-- **ElvUI**: if ElvUI's plugin library is there, the addon registers as a plugin and adds its options (without the profiles, ElvUI has its own) to ElvUI's options when ElvUI loads them.
+- The tab *General* starts with the description and the authors (*Authors:* Azilroka, Sinaris, Omega, Durc; *WoW Forever port:* Zippy).
+- Changes in *General* rebuild the bar, changes in *Blizzard* build the buttons turned on at once; turning off a Blizzard button that is already in the bar shows the reload dialog. In combat both wait until combat ends. The tracker glow needs neither a rebuild nor a reload.
+- **Removed after the first client test** (2026-11-06): *Visibility* (no pet battles in WoW Forever) and the group *Extensions* (*Anchor to Minimap*, *Point*, *Relative Point*, *X Offset*, *Y Offset*, *Lock Bar*, *Ignore List*, the hint about the ElvUI or Tukui mover). The bar stays anchored to the minimap as before (see [The bar](#the-bar)); the ElvUI and Tukui movers stay. Old profiles with these keys load without errors: AceDB keeps unknown keys and the addon no longer reads `Visibility`, `Lock` and `IgnoreList`.
+- **Profiles**: the profile page of AceDBOptions (choose, create, copy, delete, reset). All characters share the profile **Default** (`AceDB:New("SquareMinimapButtonsDB", defaults, true)`; AceDB maps `true` to the name `Default`). A character that an earlier test version had put on its own profile (`Name - Realm`) is moved to *Default* once, at its first login with this version (marker in the character section of `SquareMinimapButtonsDB`); its old profile stays and can still be chosen. To take its settings over, choose *Profiles* > *Copy From* and the old profile while *Default* is active. A character that chooses another profile later keeps it. A profile change rebuilds the bar. The settings are saved in `SquareMinimapButtonsDB`.
+- **ElvUI**: if ElvUI's plugin library is there, the addon registers as a plugin and adds its options (the tabs *General* and *Blizzard*) to ElvUI's options when ElvUI loads them.
+
+### Options dialog: size and why nothing overflows
+
+Before the changes after the first client test the dialog (700 x 620) showed one page: the description, *Enable*, the inline groups *General* (with *Blizzard*) and *Extensions*, the authors and, at the bottom, a tab group with the only tab *Profiles*. The lower part reached past the frame (screenshot of the owner). Cause in the Ace3 code (`Libs/Ace3`, the same as Ace3 commit `ac3d122`): `AceConfigDialog:FeedGroup` adds a scroll frame only when the group gets no tab, tree or select control; a root with `childGroups = "tab"` and a non-inline child group (the profiles) gets none. All controls of the root are then laid out directly into the frame, and the `TabGroup` follows below them with `height = "fill"`. The flow layout of the root needs about 677 px (layout model in the tests, the multi-line ignore list counted as only 40), the content area of the frame was 620 - 57 = 563.
+
+Now the root holds only the three tabs. `FeedGroup` puts the `TabGroup` into the frame and, for the selected tab, a `ScrollFrame` into the tab (the tab's group has no further non-inline child groups), so a tab scrolls instead of overflowing. The default size is **640 x 560** (`SetDefaultSize`), measured after the fixed heights of the AceGUI widgets:
+
+| Part | Width | Height | Source |
+|---|---|---|---|
+| Frame content | width - 34 | height - 57 | `AceGUIContainer-Frame.lua`, `OnWidthSet`, `OnHeightSet` |
+| Tab content (one row of tabs, no title) | - 60 | - (10 + 20 + 23) = - 53 | `AceGUIContainer-TabGroup.lua`, `BuildTabs`, `OnWidthSet`, `OnHeightSet` |
+| Tab area at 640 x 560 | 546 | 450 | |
+| Inline group | content - 20 | content + 40 | `AceGUIContainer-InlineGroup.lua` |
+| Flow layout | rows of controls | + 3 per row | `AceGUI-3.0.lua`, layout `Flow` |
+| Checkbox, slider, dropdown with label, heading | 170 (`width_multiplier`) or full | 24, 44 (align 25), 40 (align 26), 18 | widget files, `AceConfigDialog-3.0.lua` |
+| Labels | full | font height, estimated 12 / 14 / 18 for small / medium / large | `AceGUIWidget-Label.lua` |
+
+- **General**: description 12, *Authors:* 18, the authors 18, port line 14, *Enable* 24, *Minimap Buttons / Bar* 3 rows (24, 47, 24) + 40 = 144, *Frame Strata* and *Frame Level* in one row 48, each row + 3: **299 of 450**.
+- **Blizzard**: one toggle per row (full width, so the long label of the tracker glow fits), 24 + 3 each: WoW Forever 5 toggles **135**, Retail 6 toggles 162, Classic 2 toggles 54.
+- **Profiles** (AceDBOptions): about 390 in English and up to about 430 in German (longer descriptions with more lines), the longest tab; 560 is the smallest round height at which it fits without a scroll bar after this estimate.
+- Width 640 leaves 546: three controls of 170 per row (510), also inside the inline group (526), and the double-width profile fields (340).
+
+The tests rebuild the flow layout from the options table (`test_options.lua`, "layout of the dialog") and check General and Blizzard in WoW Forever, Retail, Classic, with ElvUI and in German. ElvUI's skin for Ace3 (`ElvUI/Game/Shared/Modules/Skins/Ace3.lua`, `Ace3_RegisterAsContainer`) only changes textures and backdrops of the containers and makes the checkbox square inside the same 24 px; it does not change any of the sizes above. In the game settings the same tabs are shown in Blizzard's settings canvas; each tab scrolls there as well. The profiles are a tab now, so the former subcategory *Profiles* in the game settings is gone.
 
 ## Blizzard buttons
 
@@ -114,11 +156,15 @@ Each difference below is part of this version; where possible it can be switched
 - Blizzard buttons in WoW Forever: tracking button moved without hiding its tracking frame, own calendar branch (ProjectAzilroka's `GameTimeTexture` does not exist there), queue click through `ToggleGroupFinderFrame()`.
 - *Move Queue Status Icon* is off by default in WoW Forever (on in Retail and Classic, as in ProjectAzilroka) and disabled while ElvUI's queue module holds the queue button.
 - Texture coordinates that the client returns as secret values are not compared.
-- Default profile after Zippy's classic UI: one column of 18 px buttons without spacing, anchored inside the top left corner of the minimap (`ButtonsPerRow` 1, `IconSize` 18, `ButtonSpacing` 0; ProjectAzilroka: 12 and 20, bar at the right screen edge).
+- Default profile after Zippy's classic UI: one column of 18 px buttons without spacing, anchored inside the top left corner of the minimap (`ButtonsPerRow` 1, `IconSize` 18, `ButtonSpacing` 0; ProjectAzilroka: 12 and 20, bar at the right screen edge). The profile *Default* is shared by all characters (ProjectAzilroka uses the profiles of its own database).
 - The own backdrop without ElvUI has a black border (ProjectAzilroka: dark grey).
-- New settings in the group *Extensions*: anchor the bar to the minimap (point, relative point, offset), lock the bar, an own ignore list next to the fixed one.
-- Without ElvUI and Tukui the bar itself can be dragged (ProjectAzilroka registers it for dragging but only its buttons move it), and its position is kept in the profile instead of the client's layout cache.
-- Buttons that already sit in the bar are counted when they are shown, not when they are visible: in ProjectAzilroka a rebuild while the bar is hidden (pet battle) counted no buttons and removed the visibility condition of the bar.
+- The bar is anchored to the minimap (keys in the profile, no options); a profile from an earlier test version with a free position keeps it.
+- No *Visibility* option and no state driver: WoW Forever has no pet battles; the bar is shown whenever it has buttons.
+- Mask textures are never emptied, and masks are taken off the skinned icons (ProjectAzilroka empties a mask with the file 130924, which hides the masked icon, for example of *Connoisseur & Restocker*).
+- New option *Glowing Tracker Icon when not tracking* (red glow on the tracking button while the character tracks nothing).
+- The options are three tabs (*General*, *Blizzard*, *Profiles*) instead of one page; the Blizzard toggles have a fixed order (ProjectAzilroka sorts them by name) so that the tracker glow stands under the tracker toggle.
+- Without ElvUI and Tukui the bar itself can be dragged when it is not anchored to the minimap (ProjectAzilroka registers it for dragging but only its buttons move it), and its position is kept in the profile instead of the client's layout cache.
+- Buttons that already sit in the bar are counted when they are shown, not when they are visible: in ProjectAzilroka a rebuild while the bar is hidden counted no buttons and hid the bar for good.
 - Without buttons the bar stays hidden: ProjectAzilroka hid it and then faded it in again, which showed an empty strip.
 - After adding the Blizzard buttons the bar is rebuilt in combat too (the rebuild waits until combat ends); ProjectAzilroka skipped it in combat, so new buttons stayed without a position until the next rebuild.
 - A rebuild asked for in combat waits until combat ends; so do the Blizzard buttons after an option or profile change in combat.
@@ -128,14 +174,18 @@ Each difference below is part of this version; where possible it can be switched
 - The backdrop of the bar is removed and the class color border on mouse-over is set only on frames that have the backdrop methods (frames skinned by AddOnSkins may lack them).
 - The queue frame starts with the mouse state that matches the queue button (ProjectAzilroka set it only when the queue button was shown or hidden).
 - Options per client after this port's detection: the garrison options are hidden in WoW Forever (they have no effect), mail, tracking, calendar and queue are shown.
-- The options are in the game settings (with a profiles subcategory), in an own dialog and, with ElvUI, in ElvUI's options; ProjectAzilroka uses ElvUI's options or the game settings. They are registered only when the guard lets the addon run.
-- Own slash commands `/zmb` and `/zippyminimap` (ProjectAzilroka has none for the module).
+- The options are in the game settings, in an own dialog and, with ElvUI, in ElvUI's options; ProjectAzilroka uses ElvUI's options or the game settings. They are registered only when the guard lets the addon run.
+- Own slash commands `/smb`, `/squareminimap` and `/squareminimapbuttons` (ProjectAzilroka has none for the module).
 - Unused code of the original (`CheckTexture`, `SMB.Hider`) is left out.
 
 ## Known limits and client checks
 
 - The automatic tests run the Lua code outside the game with stubs of the WoW API; drawing, taint and Edit Mode can only be checked in the client.
-- A button that is already in the bar stays there until the interface is reloaded, also when it is added to the own ignore list or (for Blizzard buttons) turned off.
+- A Blizzard button that is already in the bar stays there until the interface is reloaded, also when it is turned off.
+- There is no own ignore list any more (removed after the first client test); a button of another addon that should stay on the minimap cannot be excluded.
+- Masks on button icons: masks are taken off the icons the skin fits in, and mask textures stay as their addon made them; an addon that adds a mask only after the scan keeps it on its icon (round icon in the square button).
+- Tracker glow: only entries of tracking abilities count; whether every tracking ability of WoW Forever reports `type` `"spell"` or a `spellID` is to be checked in the client (C11).
+- *Lock Bar* is gone; with a profile from an earlier test version that has a free position, the bar can be dragged and is not locked.
 - *Enable Bar* turned off leaves the bar and its buttons in place until the interface is reloaded, as in ProjectAzilroka.
 - The garrison options have no effect, as in ProjectAzilroka.
 - Whether Tukui runs in WoW Forever is not checked; its branch stays as in the original.
@@ -143,16 +193,17 @@ Each difference below is part of this version; where possible it can be switched
 
 Checks in the WoW Forever client, once with ElvUI and once without:
 
-- [ ] **C1**: the addon loads without errors; `/zmb` opens the dialog; without ProjectAzilroka there is no guard message.
-- [ ] **C2**: LibDBIcon buttons become square, without the round border, with the icon cropped; map pins (HandyNotes, TomTom, Questie, if used) stay on the map.
+- [ ] **C1**: the addon loads without errors; `/smb`, `/squareminimap` and `/squareminimapbuttons` open the dialog; without ProjectAzilroka there is no guard message; the dialog at its default size shows the tabs *General*, *Blizzard* and *Profiles*, and nothing reaches past the frame.
+- [ ] **C2**: LibDBIcon buttons become square, without the round border, with the icon cropped; map pins (HandyNotes, TomTom, Questie, if used) stay on the map; *Connoisseur & Restocker* shows its food icon (not an empty frame).
 - [ ] **C3**: the bar matches the screenshot in column, border, backdrop and position; size 18 and spacing 0 are the defaults the owner chose on 2026-11-06, the screenshot showed 22 and 2.
 - [ ] **C4**: tracking and calendar button in the bar: a click opens the menu or the calendar; the tracking button stays visible, the mail indicator does not jump; `taintLog` has no entries from this addon.
 - [ ] **C5**: queue option on (without ElvUI): the eye is in the bar, a click opens the group finder, opening and closing Edit Mode and scaling the minimap cause no taint errors and no jump back; only then consider turning the option on by default.
 - [ ] **C6**: together with ElvUI's minimap (tracking position, calendar, mail indicator, `ElvUI_MinimapHolder`) and ElvUI's queue module (option *Move Queue Status Icon* disabled, the eye at ElvUI's queue status mover, no empty frame in the bar).
 - [ ] **C7**: mail button green with new mail, tooltip with the senders; the icons `INV_Letter_15` and `LFG-Eye` exist.
-- [ ] **C8**: visibility `[petbattle] hide; show` (is `[petbattle]` evaluated?), fading with *Bar MouseOver*, dragging and *Lock Bar*.
-- [ ] **C9**: saved variables: change a setting, restart the client, the value is still there.
-- [ ] **C10**: options in the game settings and, with ElvUI, in ElvUI's options; a profile change rebuilds the bar.
+- [ ] **C8**: the bar is shown while it has buttons; fading with *Bar MouseOver*.
+- [ ] **C9**: saved variables: change a setting, restart the client, the value is still there; a second character uses the same profile *Default*; an existing character from the first test is on *Default* and its old profile can be copied with *Copy From*.
+- [ ] **C10**: options in the game settings and, with ElvUI, in ElvUI's options (the same tabs); a profile change rebuilds the bar.
+- [ ] **C11**: tracker glow: with Find Herbs or Find Minerals known and no tracking active, the tracking button pulses red (in the bar and, with *Move Tracker Icon* off, at the minimap); casting a tracking ability ends it, cancelling it starts it again; no glow while dead, as a ghost or on a flight path; clicks on the tracking button still open its menu.
 
 ## Credits and license
 
