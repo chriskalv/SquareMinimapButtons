@@ -14,7 +14,7 @@ import zlib from 'node:zlib';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { release, main } from '../tools/release.mjs';
+import { release, main, dosDateTime } from '../tools/release.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ADDON = 'SquareMinimapButtons';
@@ -41,6 +41,27 @@ function diskFiles(dir, prefix = '', out = new Map()) {
     else out.set(`${prefix}${entry.name}`, abs);
   }
   return out;
+}
+
+// Expected zip order: the root folder, then per folder its entries sorted by UTF-16 code unit,
+// each subfolder (name ending in "/") directly before its contents.
+function expectedOrder(dir, prefix) {
+  const out = [];
+  const names = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  for (const entry of names) {
+    if (entry.isDirectory()) {
+      out.push(`${prefix}${entry.name}/`);
+      out.push(...expectedOrder(path.join(dir, entry.name), `${prefix}${entry.name}/`));
+    } else {
+      out.push(`${prefix}${entry.name}`);
+    }
+  }
+  return out;
+}
+
+// DOS date and time (local time) -> Date
+function fromDos(date, time) {
+  return new Date(1980 + (date >> 9), ((date >> 5) & 0x0f) - 1, date & 0x1f, time >> 11, (time >> 5) & 0x3f, (time & 0x1f) * 2);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -131,8 +152,14 @@ test('release zip of SquareMinimapButtons: one root folder, every addon file, no
     assert.ok(!/\.zip$/i.test(entry.name), `${entry.name} is no zip`);
     assert.ok(!/(^|\/)\./.test(entry.name), `${entry.name} is no dot file`);
     assert.ok(entry.flags & 0x0800, `${entry.name} has the UTF-8 flag`);
-    assert.ok(entry.date >> 9 >= 0 && ((entry.date >> 5) & 0x0f) >= 1, `${entry.name} has a DOS date`);
+    const isFolder = entry.name.endsWith('/');
+    assert.equal(entry.method, !isFolder && entry.size > 0 ? 8 : 0, `${entry.name}: deflate for files with content, stored otherwise`);
+    const abs = path.join(repoRoot, entry.name);
+    const mtime = fs.statSync(abs).mtime;
+    const stamp = fromDos(entry.date, entry.time);
+    assert.ok(Math.abs(stamp - mtime) < 2000, `${entry.name}: DOS date ${stamp.toISOString()} matches mtime ${mtime.toISOString()}`);
   }
+  assert.deepEqual(entries.map((e) => e.name), [`${ADDON}/`, ...expectedOrder(addonDir, `${ADDON}/`)], 'entries in sorted order, folders before their contents');
   const roots = new Set(entries.map((e) => e.name.split('/')[0]));
   assert.deepEqual([...roots], [ADDON], 'exactly one root folder');
 
@@ -204,6 +231,14 @@ test('development files, dot files and zips in the addon folder are left out', (
   }
   const fileCount = names.filter((n) => !n.endsWith('/')).length;
   assert.equal(fileCount, diskFiles(addonDir).size, 'only the files of the real addon folder');
+});
+
+test('DOS date and time: before 1980 becomes 1980-01-01 00:00, later dates are kept', () => {
+  assert.deepEqual(dosDateTime(new Date(1975, 5, 15, 13, 45, 30)), { time: 0, date: (1 << 5) | 1 });
+  const { date, time } = dosDateTime(new Date(2026, 10, 6, 14, 37, 58));
+  assert.deepEqual(fromDos(date, time), new Date(2026, 10, 6, 14, 37, 58));
+  const odd = dosDateTime(new Date(1980, 0, 1, 0, 0, 1));
+  assert.deepEqual(fromDos(odd.date, odd.time), new Date(1980, 0, 1, 0, 0, 0), 'seconds in steps of two');
 });
 
 test('a TOC without a version is an error', (t) => {

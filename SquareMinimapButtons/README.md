@@ -59,7 +59,7 @@ The addon compartment entry opens the options as well.
 | Option | Group | Default (WoW Forever) | Range | Effect |
 |---|---|---|---|---|
 | *Enable* | top | on | toggle | off: reload dialog (the bar goes away with the reload); on: builds the bar if it does not exist yet |
-| *Enable Bar* | General > Minimap Buttons / Bar | on | toggle | without the bar the buttons are only skinned where they are, and no Blizzard buttons are added |
+| *Enable Bar* | General > Minimap Buttons / Bar | on | toggle | without the bar the buttons are only skinned where they are, and no Blizzard buttons are added; turning it off takes effect after a reload (the bar stays until then, without a reload dialog) |
 | *Bar MouseOver* | same | off | toggle | the bar fades out and fades in under the mouse |
 | *Bar Backdrop* | same | on | toggle | backdrop of the bar |
 | *Icon Size* | same | 22 | 12 to 48 | edge length of the buttons |
@@ -108,7 +108,7 @@ Seven seconds after the start (and after a profile change or when one is turned 
 
 ## Differences from ProjectAzilroka
 
-Each difference below is part of this version; most can be switched off or are set so that the original behavior results.
+Each difference below is part of this version; where possible it can be switched off or is set so that the original behavior results.
 
 - Client detection for WoW Forever (`WOW_PROJECT_ID == WOW_PROJECT_CAMELOT`) with its own branches for the Blizzard buttons; ProjectAzilroka knows only Retail and Classic.
 - Blizzard buttons in WoW Forever: tracking button moved without hiding its tracking frame, own calendar branch (ProjectAzilroka's `GameTimeTexture` does not exist there), queue click through `ToggleGroupFinderFrame()`.
@@ -136,6 +136,7 @@ Each difference below is part of this version; most can be switched off or are s
 
 - The automatic tests run the Lua code outside the game with stubs of the WoW API; drawing, taint and Edit Mode can only be checked in the client.
 - A button that is already in the bar stays there until the interface is reloaded, also when it is added to the own ignore list or (for Blizzard buttons) turned off.
+- *Enable Bar* turned off leaves the bar and its buttons in place until the interface is reloaded, as in ProjectAzilroka.
 - The garrison options have no effect, as in ProjectAzilroka.
 - Whether Tukui runs in WoW Forever is not checked; its branch stays as in the original.
 - If the client does not keep the saved variables, the defaults apply at every start and changes are lost (check C9).
