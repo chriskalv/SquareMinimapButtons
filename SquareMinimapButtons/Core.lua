@@ -170,7 +170,8 @@ end
 --------------------------------------------------------------------------------
 -- Saved variables and profiles
 -- Keys as in ProjectAzilroka's module; values after the screenshot of the requester (one column,
--- 22 px icons). MoveQueue is off in Forever until the queue button is cleared in the client.
+-- 22 px icons; IconSize and ButtonSpacing changed to 18 and 0 on 2026-11-06 at the owner's
+-- request). MoveQueue is off in Forever until the queue button is cleared in the client.
 --------------------------------------------------------------------------------
 
 function SMB.BuildDefaults(isForever)
@@ -180,8 +181,8 @@ function SMB.BuildDefaults(isForever)
 			BarEnabled = true,
 			BarMouseOver = false,
 			Backdrop = true,
-			IconSize = 22,
-			ButtonSpacing = 2,
+			IconSize = 18,
+			ButtonSpacing = 0,
 			ButtonsPerRow = 1,
 			Shadows = true,
 			ReverseDirection = false,

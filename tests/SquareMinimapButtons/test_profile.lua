@@ -6,8 +6,8 @@ local EXPECTED_FOREVER = {
     BarEnabled = true,
     BarMouseOver = false,
     Backdrop = true,
-    IconSize = 22,
-    ButtonSpacing = 2,
+    IconSize = 18,
+    ButtonSpacing = 0,
     ButtonsPerRow = 1,
     Shadows = true,
     ReverseDirection = false,
@@ -63,6 +63,18 @@ describe("default profile", function()
         assert_nil(SMB.db.BarPosition, "no free position by default")
     end)
 
+    it("BuildDefaults: IconSize 18 and ButtonSpacing 0 (changed 2026-11-06), all other values unchanged", function()
+        local SMB = started({})
+        for _, isForever in ipairs({ true, false }) do
+            local profile = SMB.BuildDefaults(isForever).profile
+            assert_eq(profile.IconSize, 18, "IconSize")
+            assert_eq(profile.ButtonSpacing, 0, "ButtonSpacing")
+            local expected = copy(EXPECTED_FOREVER)
+            expected.MoveQueue = not isForever
+            assert_eq(profile, expected, "isForever " .. tostring(isForever))
+        end
+    end)
+
     it("declares no other keys", function()
         local SMB = started({})
         local keys = {}
@@ -103,7 +115,7 @@ describe("saved variables", function()
         })
         assert_eq(SMB.db.IconSize, 30)
         assert_eq(SMB.db.ButtonsPerRow, 6)
-        assert_eq(SMB.db.ButtonSpacing, 2)
+        assert_eq(SMB.db.ButtonSpacing, 0)
     end)
 end)
 
@@ -140,7 +152,7 @@ describe("profile callbacks", function()
         SMB.db.IconSize = 40
         SMB.data:ResetProfile()
         assert_eq(log, { "Update", "HandleBlizzardButtons" })
-        assert_eq(SMB.db.IconSize, 22)
+        assert_eq(SMB.db.IconSize, 18)
     end)
 
     it("sets the position of the bar again before the rebuild", function()

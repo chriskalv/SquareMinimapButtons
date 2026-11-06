@@ -63,7 +63,7 @@ describe("start (Initialize)", function()
         assert_true(Bar:IsClampedToScreen())
         assert_true(Bar:IsMovable())
         assert_true(Bar:IsMouseEnabled())
-        assert_eq({ Bar:GetSize() }, { 22, 22 }, "IconSize until the first Update")
+        assert_eq({ Bar:GetSize() }, { 18, 18 }, "IconSize until the first Update")
         assert_true(SMB.isEnabled)
         assert_eq(Bar:GetBackdrop(), { bgFile = SMB.Solid, edgeFile = SMB.Solid, edgeSize = 1 }, "template")
         assert_eq({ Bar:GetBackdropBorderColor() }, { 0, 0, 0, 1 }, "black border without ElvUI")
@@ -218,8 +218,8 @@ describe("start (Initialize)", function()
     end)
 end)
 
--- Expected layouts with IconSize 22 and ButtonSpacing 2 (step 24), computed by hand from
--- ProjectAzilroka 388-431:
+-- Expected layouts with IconSize 22 and ButtonSpacing 2 (step 24; set explicitly, the defaults are
+-- 18 and 0), computed by hand from ProjectAzilroka 388-431:
 --   x = Spacing + (Size + Spacing) * (column - 1), y = -Spacing - (Size + Spacing) * (row - 1)
 --   width = 2 * Spacing + Size * n + Spacing * (n - 1), n = columns of the widest row (0 without
 --   buttons, so the width is Spacing), height the same with the number of rows (at least 1).
@@ -255,6 +255,8 @@ local GRID = {
 
 local function runGrid(case, reverse)
     local SMB = fresh()
+    SMB.db.IconSize = 22
+    SMB.db.ButtonSpacing = 2
     SMB.db.ButtonsPerRow = case.perRow
     SMB.db.ReverseDirection = reverse
     local buttons = addButtons(case.n)
@@ -286,8 +288,10 @@ describe("grid (Update)", function()
         end)
     end
 
-    it("reverse direction written out: 5 buttons, 3 per row", function()
+    it("reverse direction written out: IconSize 22, ButtonSpacing 2, 5 buttons, 3 per row", function()
         local SMB = fresh()
+        SMB.db.IconSize = 22
+        SMB.db.ButtonSpacing = 2
         SMB.db.ButtonsPerRow = 3
         SMB.db.ReverseDirection = true
         local buttons = addButtons(5)
@@ -315,14 +319,18 @@ describe("grid (Update)", function()
         assert_eq({ buttons[1]:GetSize() }, { 20, 20 })
     end)
 
-    it("default profile: one column from the top, 26 wide and 122 high with five buttons", function()
+    it("default profile: one column from the top, 18 wide and 90 high with five buttons", function()
         local SMB = fresh()
+        assert_eq({ SMB.db.IconSize, SMB.db.ButtonSpacing, SMB.db.ButtonsPerRow }, { 18, 0, 1 })
         local buttons = addButtons(5)
         SMB:GrabMinimapButtons()
         assert_eq(layout(SMB, buttons), {
-            { "TOPLEFT", 2, -2 }, { "TOPLEFT", 2, -26 }, { "TOPLEFT", 2, -50 }, { "TOPLEFT", 2, -74 }, { "TOPLEFT", 2, -98 },
+            { "TOPLEFT", 0, 0 }, { "TOPLEFT", 0, -18 }, { "TOPLEFT", 0, -36 }, { "TOPLEFT", 0, -54 }, { "TOPLEFT", 0, -72 },
         })
-        assert_eq({ SMB.Bar:GetSize() }, { 2 * 2 + 22, 2 + 5 * 22 + 4 * 2 + 2 })
+        assert_eq({ SMB.Bar:GetSize() }, { 2 * 0 + 18, 0 + 5 * 18 + 4 * 0 + 0 })
+        for _, button in ipairs(buttons) do
+            assert_eq({ button:GetSize() }, { 18, 18 })
+        end
         assert_eq({ SMB.Bar:GetPoint() }, { "TOPLEFT", Minimap, "TOPLEFT", 1, -1 })
         assert_true(SMB.Bar:IsShown())
         assert_eq(SMB.Bar:GetAlpha(), 1)
@@ -335,8 +343,8 @@ describe("grid (Update)", function()
         SMB:GrabMinimapButtons()
         assert_true(buttons[2].isSkinned, "skinned, but not laid out")
         assert_true(buttons[2]:GetParent() == Minimap, "stays at the minimap")
-        assert_eq(layout(SMB, { buttons[1], buttons[3] }), { { "TOPLEFT", 2, -2 }, { "TOPLEFT", 2, -26 } })
-        assert_eq({ SMB.Bar:GetSize() }, { 26, 50 })
+        assert_eq(layout(SMB, { buttons[1], buttons[3] }), { { "TOPLEFT", 0, 0 }, { "TOPLEFT", 0, -18 } })
+        assert_eq({ SMB.Bar:GetSize() }, { 18, 36 })
 
         -- a button outside the bar counts only if it is visible (IsVisible), as in the original
         local late = NewLibDBIconButton("Late")
@@ -347,7 +355,7 @@ describe("grid (Update)", function()
         MinimapCluster:Show()
         SMB:Update()
         assert_true(late:GetParent() == SMB.Bar)
-        assert_eq({ SMB.Bar:GetSize() }, { 26, 74 })
+        assert_eq({ SMB.Bar:GetSize() }, { 18, 54 })
     end)
 
     it("a button in the bar that its addon hides drops out at the next Update", function()
@@ -356,8 +364,8 @@ describe("grid (Update)", function()
         SMB:GrabMinimapButtons()
         buttons[1]:Hide()
         SMB:Update()
-        assert_eq(layout(SMB, { buttons[2], buttons[3] }), { { "TOPLEFT", 2, -2 }, { "TOPLEFT", 2, -26 } })
-        assert_eq({ SMB.Bar:GetSize() }, { 26, 50 })
+        assert_eq(layout(SMB, { buttons[2], buttons[3] }), { { "TOPLEFT", 0, 0 }, { "TOPLEFT", 0, -18 } })
+        assert_eq({ SMB.Bar:GetSize() }, { 18, 36 })
     end)
 
     it("buttons are children of the bar, locked, with strata and level from the profile", function()
@@ -386,7 +394,7 @@ describe("grid (Update)", function()
         buttons[1]:SetPoint("CENTER", Minimap, "CENTER", 0, 0)
         buttons[1]:SetParent(Minimap)
         assert_true(buttons[1]:GetParent() == Bar)
-        assert_eq({ buttons[1]:GetPoint() }, { "TOPLEFT", Bar, "TOPLEFT", 2, -2 })
+        assert_eq({ buttons[1]:GetPoint() }, { "TOPLEFT", Bar, "TOPLEFT", 0, 0 })
         -- a new strata from the options reaches the bar and the buttons
         SMB.db.Strata = "LOW"
         SMB:Update()
@@ -430,9 +438,9 @@ describe("grid (Update)", function()
         assert_nil(STUB.stateDrivers[SMB.Bar].visibility, "driver unregistered")
         assert_eq(STUB.stateDriverLog, { { action = "unregister", frame = SMB.Bar, state = "visibility" } })
         assert_eq(hides, 1, "Hide called")
-        assert_eq({ SMB.Bar:GetSize() }, { 2, 26 })
+        assert_eq({ SMB.Bar:GetSize() }, { 0, 18 }, "Spacing wide, one row high")
         -- ProjectAzilroka fades the bar in after hiding it (447-451), and UIFrameFadeIn shows the
-        -- frame (FrameUtil.lua UIFrameFade): the empty bar came back as a strip of 2 x 26 without its
+        -- frame (FrameUtil.lua UIFrameFade): the empty bar came back as a strip without its
         -- driver. The port fades only with buttons (ActualButtons > 0).
         assert_eq(#STUB.fades, 0, "no fade without buttons")
         assert_false(SMB.Bar:IsShown(), "the empty bar stays hidden")
@@ -464,9 +472,9 @@ describe("bar hidden by its driver (pet battle), then Update", function()
         SMB:Update() -- for example from the HandleBlizzardButtons timer or an option
         assert_eq(STUB.stateDrivers[Bar].visibility, "[petbattle] hide; show", "driver still registered")
         assert_true(Bar:IsShown())
-        assert_eq({ Bar:GetSize() }, { 26, 122 })
+        assert_eq({ Bar:GetSize() }, { 18, 90 })
         assert_eq(layout(SMB, buttons), {
-            { "TOPLEFT", 2, -2 }, { "TOPLEFT", 2, -26 }, { "TOPLEFT", 2, -50 }, { "TOPLEFT", 2, -74 }, { "TOPLEFT", 2, -98 },
+            { "TOPLEFT", 0, 0 }, { "TOPLEFT", 0, -18 }, { "TOPLEFT", 0, -36 }, { "TOPLEFT", 0, -54 }, { "TOPLEFT", 0, -72 },
         })
         -- the end of the pet battle shows the bar through its driver
         SetStateDriverHidden(Bar, true)
@@ -476,7 +484,7 @@ describe("bar hidden by its driver (pet battle), then Update", function()
 
     -- Counter-check against the original (IsVisible() for every button, ProjectAzilroka 400): in the
     -- hidden bar no button is visible, Update counts zero, unregisters the driver and shrinks the
-    -- bar to 2 x 26; this test then fails at "driver still registered" (mutation probe in the
+    -- bar to Spacing x (2 * Spacing + IconSize); this test then fails at "driver still registered" (mutation probe in the
     -- report of package 3).
 end)
 
@@ -580,18 +588,18 @@ describe("combat", function()
         local SMB = fresh()
         local buttons = addButtons(2)
         SMB:GrabMinimapButtons()
-        assert_eq({ SMB.Bar:GetSize() }, { 26, 50 })
+        assert_eq({ SMB.Bar:GetSize() }, { 18, 36 })
         SetCombat(true)
         SMB.db.ButtonsPerRow = 2
         STUB.fades = {}
         SMB:Update()
         SMB:Update()
-        assert_eq({ SMB.Bar:GetSize() }, { 26, 50 }, "nothing changes in combat")
+        assert_eq({ SMB.Bar:GetSize() }, { 18, 36 }, "nothing changes in combat")
         assert_eq(#STUB.fades, 0)
         assert_eq(#(STUB.eventFrames.PLAYER_REGEN_ENABLED or {}), 1, "the event is registered once")
         SetCombat(false)
-        assert_eq({ SMB.Bar:GetSize() }, { 50, 26 }, "rebuilt after combat")
-        assert_eq(layout(SMB, buttons), { { "TOPLEFT", 2, -2 }, { "TOPLEFT", 26, -2 } })
+        assert_eq({ SMB.Bar:GetSize() }, { 36, 18 }, "rebuilt after combat")
+        assert_eq(layout(SMB, buttons), { { "TOPLEFT", 0, 0 }, { "TOPLEFT", 18, 0 } })
         assert_eq(#STUB.fades, 1, "exactly one Update")
         FireEvent("PLAYER_REGEN_ENABLED")
         assert_eq(#STUB.fades, 1, "the event is unregistered after the run")
@@ -633,13 +641,13 @@ describe("profile change", function()
         local SMB = fresh(twoProfiles())
         local buttons = addButtons(5)
         SMB:GrabMinimapButtons()
-        assert_eq({ SMB.Bar:GetSize() }, { 26, 122 })
+        assert_eq({ SMB.Bar:GetSize() }, { 18, 90 })
         SMB.data:SetProfile("Other")
-        assert_eq({ SMB.Bar:GetSize() }, { 122, 26 }, "Update ran")
-        assert_eq(layout(SMB, buttons)[5], { "TOPLEFT", 98, -2 })
+        assert_eq({ SMB.Bar:GetSize() }, { 90, 18 }, "Update ran")
+        assert_eq(layout(SMB, buttons)[5], { "TOPLEFT", 72, 0 })
         assert_eq({ SMB.Bar:GetPoint() }, { "TOP", UIParent, "TOP", 0, -50 }, "position set again")
         SMB.data:SetProfile("Zippy - Forever")
-        assert_eq({ SMB.Bar:GetSize() }, { 26, 122 })
+        assert_eq({ SMB.Bar:GetSize() }, { 18, 90 })
         assert_eq({ SMB.Bar:GetPoint() }, { "TOPLEFT", Minimap, "TOPLEFT", 1, -1 })
     end)
 
@@ -663,8 +671,8 @@ describe("profile change", function()
         SetCombat(true)
         SMB.data:SetProfile("Other")
         assert_eq({ SMB.Bar:GetPoint() }, { "TOP", UIParent, "TOP", 0, -50 })
-        assert_eq({ SMB.Bar:GetSize() }, { 26, 122 })
+        assert_eq({ SMB.Bar:GetSize() }, { 18, 90 })
         SetCombat(false)
-        assert_eq({ SMB.Bar:GetSize() }, { 122, 26 })
+        assert_eq({ SMB.Bar:GetSize() }, { 90, 18 })
     end)
 end)

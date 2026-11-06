@@ -15,7 +15,7 @@ Port of the *Square Minimap Buttons* module of [ProjectAzilroka](https://github.
 
 ### The bar
 
-- **Layout**: the buttons are laid out in the order they were found, `ButtonsPerRow` per row (default 1, so one column from the top), `IconSize` 22 and `ButtonSpacing` 2 apart and from the edge, from the top left corner (with *Reverse Direction* from the top right). The bar takes the size of its buttons, gets the backdrop (*Bar Backdrop*), the strata and level of the profile (buttons one level higher) and only counts buttons that are shown. Without buttons it is hidden.
+- **Layout**: the buttons are laid out in the order they were found, `ButtonsPerRow` per row (default 1, so one column from the top), `IconSize` 18 and `ButtonSpacing` 0 apart and from the edge, from the top left corner (with *Reverse Direction* from the top right). The bar takes the size of its buttons, gets the backdrop (*Bar Backdrop*), the strata and level of the profile (buttons one level higher) and only counts buttons that are shown. Without buttons it is hidden.
 - **Position**: by default the bar is anchored to the minimap, its top left corner 1 px inside the top left corner of the minimap (point, relative point and offset in the profile). Without that anchor it stands where it was dragged last (saved in the profile) or, if it was never dragged, at the right screen edge like in ProjectAzilroka.
 - **Dragging and lock**: without ElvUI and Tukui the bar is dragged with the left mouse button, on the bar or on one of its buttons; the position is saved in the profile. Nothing moves while the bar is anchored to the minimap or locked (*Lock Bar*). With ElvUI the bar has ElvUI's mover *SquareMinimapButtonBar Anchor* (frame name `SquareMinimapButtonBarMover`, as in ProjectAzilroka, so a mover position from an ElvUI profile applies), which starts at the position from the profile; with Tukui it is registered with Tukui's movers.
 - **Fading**: with *Bar MouseOver* the bar fades out and fades in while the mouse is over the bar or one of its buttons.
@@ -62,8 +62,8 @@ The addon compartment entry opens the options as well.
 | *Enable Bar* | General > Minimap Buttons / Bar | on | toggle | without the bar the buttons are only skinned where they are, and no Blizzard buttons are added; turning it off takes effect after a reload (the bar stays until then, without a reload dialog) |
 | *Bar MouseOver* | same | off | toggle | the bar fades out and fades in under the mouse |
 | *Bar Backdrop* | same | on | toggle | backdrop of the bar |
-| *Icon Size* | same | 22 | 12 to 48 | edge length of the buttons |
-| *Button Spacing* | same | 2 | -1 to 10 | space between the buttons and to the edge |
+| *Icon Size* | same | 18 | 12 to 48 | edge length of the buttons |
+| *Button Spacing* | same | 0 | -1 to 10 | space between the buttons and to the edge |
 | *Buttons Per Row* | same | 1 | 1 to 100 | columns per row |
 | *Shadows* | same | on | toggle | shadows, only with AddOnSkins, ElvUI or Tukui |
 | *Reverse Direction* | same | off | toggle | lay out from the top right |
@@ -114,7 +114,7 @@ Each difference below is part of this version; where possible it can be switched
 - Blizzard buttons in WoW Forever: tracking button moved without hiding its tracking frame, own calendar branch (ProjectAzilroka's `GameTimeTexture` does not exist there), queue click through `ToggleGroupFinderFrame()`.
 - *Move Queue Status Icon* is off by default in WoW Forever (on in Retail and Classic, as in ProjectAzilroka) and disabled while ElvUI's queue module holds the queue button.
 - Texture coordinates that the client returns as secret values are not compared.
-- Default profile after Zippy's classic UI: one column of 22 px buttons, anchored inside the top left corner of the minimap (`ButtonsPerRow` 1, `IconSize` 22; ProjectAzilroka: 12 and 20, bar at the right screen edge).
+- Default profile after Zippy's classic UI: one column of 18 px buttons without spacing, anchored inside the top left corner of the minimap (`ButtonsPerRow` 1, `IconSize` 18, `ButtonSpacing` 0; ProjectAzilroka: 12 and 20, bar at the right screen edge).
 - The own backdrop without ElvUI has a black border (ProjectAzilroka: dark grey).
 - New settings in the group *Extensions*: anchor the bar to the minimap (point, relative point, offset), lock the bar, an own ignore list next to the fixed one.
 - Without ElvUI and Tukui the bar itself can be dragged (ProjectAzilroka registers it for dragging but only its buttons move it), and its position is kept in the profile instead of the client's layout cache.
