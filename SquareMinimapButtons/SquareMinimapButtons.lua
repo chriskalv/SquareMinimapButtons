@@ -6,7 +6,7 @@
 	the minimap (GrabMinimapButtons), the skinning of the buttons (SkinMinimapButton, HandleRegion),
 	the locking of their position methods (LockButton, UnlockButton), the Blizzard buttons
 	(HandleBlizzardButtons: mail, tracking, queue, calendar) and the bar (Initialize, Update,
-	fading, visibility driver, mover and dragging). The options follow in the next package.
+	fading, visibility driver, mover and dragging). The options are in Options.lua.
 
 	Changes from the original in this part:
 	  - an own ignore list from the profile (db.IgnoreList: button names or Lua patterns) next to
@@ -17,7 +17,8 @@
 	  - GrabMinimapButtons returns the number of buttons it skinned (nil when it does not scan);
 	  - Update counts a button that already sits in the bar by IsShown() instead of IsVisible(), so a
 	    hidden bar (pet battle driver) does not count zero buttons and switch itself off for good;
-	  - Update in combat waits for PLAYER_REGEN_ENABLED;
+	  - Update in combat waits for PLAYER_REGEN_ENABLED, and so do the Blizzard buttons requested by
+	    an option or profile change in combat (SMB:RequestBlizzardButtons in Core.lua);
 	  - the bar is anchored to the minimap by default (db.AnchorToMinimap, db.Point, db.RelativePoint,
 	    db.X, db.Y); without that anchor it stands at its saved free position (db.BarPosition) or,
 	    without one, where the original puts it (RIGHT of UIParent, -45/0);
@@ -602,10 +603,17 @@ local function countsForBar(Button, Bar)
 	return Button:IsVisible()
 end
 
+-- After combat: the Blizzard buttons requested in combat (SMB:RequestBlizzardButtons in Core.lua;
+-- HandleBlizzardButtons ends with Update), else the Update that waited.
 function SMB:PLAYER_REGEN_ENABLED()
 	SMB:UnregisterEvent('PLAYER_REGEN_ENABLED')
-	SMB.updatePending = nil
-	SMB:Update()
+	local blizzard = SMB.blizzardPending
+	SMB.updatePending, SMB.blizzardPending = nil, nil
+	if blizzard then
+		SMB:HandleBlizzardButtons()
+	else
+		SMB:Update()
+	end
 end
 
 function SMB:Update()

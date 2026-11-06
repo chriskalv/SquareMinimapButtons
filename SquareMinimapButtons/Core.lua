@@ -4,7 +4,9 @@
 	Ported from ProjectAzilroka (Azilroka), see LICENSE.txt.
 	The helpers in this file (Noop, TexCoords, SetTemplate, CreateShadow, SetInside, class color,
 	addon detection, reload dialog) follow ProjectAzilroka's Init.lua; the client detection, the
-	defaults of this port, the guard against a loaded ProjectAzilroka and the slash commands are new.
+	defaults of this port, the guard against a loaded ProjectAzilroka, the slash commands and the
+	Blizzard buttons after combat for option changes (RequestBlizzardButtons) are new. Start registers
+	the options (Options.lua) before Initialize, and only when the guard lets the addon run.
 
 	Load order (see SquareMinimapButtons.toc): Libs, Locales, Core.lua, SquareMinimapButtons.lua,
 	Options.lua. Every file receives the addon name and the shared addon table as varargs; the other
@@ -216,7 +218,23 @@ function SMB:ApplySettings()
 	if self.blocked then return end
 	if self.ApplyBarPosition then self:ApplyBarPosition() end
 	if self.Update then self:Update() end
-	if self.HandleBlizzardButtons then self:HandleBlizzardButtons() end
+	if self.HandleBlizzardButtons then self:RequestBlizzardButtons() end
+end
+
+-- Builds the Blizzard buttons after an option or profile change. In combat this waits for
+-- PLAYER_REGEN_ENABLED (registered once; SMB:PLAYER_REGEN_ENABLED in SquareMinimapButtons.lua runs
+-- HandleBlizzardButtons there, which ends with Update). Returns true if it ran at once.
+function SMB:RequestBlizzardButtons()
+	if not self.HandleBlizzardButtons then return false end
+	if _G.InCombatLockdown() then
+		if not self.blizzardPending then
+			self.blizzardPending = true
+			self:RegisterEvent('PLAYER_REGEN_ENABLED')
+		end
+		return false
+	end
+	self:HandleBlizzardButtons()
+	return true
 end
 
 --------------------------------------------------------------------------------
@@ -284,6 +302,8 @@ function SMB:Start()
 	end
 
 	self.blocked = false
+	-- options first (Bauplan: register the options, then Initialize as ProjectAzilroka)
+	if self.RegisterOptions then self:RegisterOptions() end
 	if self.Initialize then self:Initialize() end
 end
 

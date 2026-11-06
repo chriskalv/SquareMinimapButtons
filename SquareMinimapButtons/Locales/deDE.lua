@@ -14,6 +14,7 @@ L['General'] = 'Allgemein'
 L['Blizzard'] = true
 L['Authors:'] = 'Autoren:'
 L['This setting requires that you reload your User Interface.'] = 'Diese Einstellung erfordert, dass Du Deine Benutzeroberfläche neu laden musst.'
+L['Profiles'] = 'Profile'
 
 -- Options of the Square Minimap Buttons module (ProjectAzilroka)
 L['Minimap Buttons / Bar'] = 'Minikarte Tasten / Leiste'
@@ -51,6 +52,10 @@ L['Prevents the bar from being dragged.'] = 'Verhindert, dass die Leiste verscho
 L['Ignore List'] = 'Eigene Ignorierliste'
 L['Buttons that stay on the minimap: one frame name or Lua pattern per line.'] = 'Knöpfe, die auf der Minikarte bleiben: ein Framename oder Lua-Muster je Zeile.'
 L["Disabled while ElvUI's queue status mover is active."] = 'Gesperrt, solange ElvUIs Mover für den Warteschlangen-Status aktiv ist.'
+L['Point of the bar that is attached to the minimap.'] = 'Punkt der Leiste, der an der Minikarte hängt.'
+L['Point of the minimap that the bar is attached to.'] = 'Punkt der Minikarte, an dem die Leiste hängt.'
+L['The ElvUI or Tukui mover holds the position of the bar, so the anchor options are disabled.'] = 'Der Mover von ElvUI oder Tukui hält die Lage der Leiste, deshalb sind die Ankeroptionen gesperrt.'
+L['A button that is already in the bar stays there until you reload your User Interface.'] = 'Ein Knopf, der schon in der Leiste ist, bleibt dort bis zum Neuladen der Benutzeroberfläche.'
 
 -- WoW Forever port: guard against ProjectAzilroka
 L['ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled, so this addon stays inactive. Disable one of the two to avoid conflicts.'] = 'ProjectAzilroka ist geladen und dessen Modul Square Minimap Buttons ist aktiv, deshalb bleibt dieses Addon inaktiv. Deaktiviere eines der beiden, um Konflikte zu vermeiden.'

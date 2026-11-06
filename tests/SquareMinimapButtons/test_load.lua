@@ -202,6 +202,7 @@ describe("slash commands", function()
     it("without arguments prints a hint while no options are registered", function()
         ReloadAddon({})
         StartClient()
+        LibStub("AceConfigRegistry-3.0").tables.SquareMinimapButtons = nil -- as before package 5
         assert_true(RunSlash("/zmb", ""))
         assert_eq(ChatContains("The options are not available yet."), 1)
     end)
@@ -211,7 +212,6 @@ describe("slash commands", function()
         StartClient()
         local opened
         LibStub("AceConfigDialog-3.0").Open = function(_, name) opened = name end
-        LibStub("AceConfigRegistry-3.0"):RegisterOptionsTable("SquareMinimapButtons", { type = "group", args = {} })
         RunSlash("/zippyminimap", "")
         assert_eq(opened, "SquareMinimapButtons")
         assert_eq(ChatContains("The options are not available yet."), 0)
@@ -261,11 +261,14 @@ describe("reload dialog and addon compartment", function()
         ReloadAddon({})
         StartClient()
         assert_eq(type(SquareMinimapButtons_OnAddonCompartmentClick), "function")
+        local registry = LibStub("AceConfigRegistry-3.0")
+        local registered = registry.tables.SquareMinimapButtons
+        registry.tables.SquareMinimapButtons = nil -- as before package 5
         SquareMinimapButtons_OnAddonCompartmentClick()
         assert_eq(ChatContains("The options are not available yet."), 1)
+        registry.tables.SquareMinimapButtons = registered
         local opened
         LibStub("AceConfigDialog-3.0").Open = function(_, name) opened = name end
-        LibStub("AceConfigRegistry-3.0"):RegisterOptionsTable("SquareMinimapButtons", { type = "group", args = {} })
         SquareMinimapButtons_OnAddonCompartmentClick()
         assert_eq(opened, "SquareMinimapButtons")
     end)

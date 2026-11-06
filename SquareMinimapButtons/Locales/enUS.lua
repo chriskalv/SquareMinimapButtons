@@ -13,6 +13,7 @@ L['General'] = true
 L['Blizzard'] = true
 L['Authors:'] = true
 L['This setting requires that you reload your User Interface.'] = true
+L['Profiles'] = true
 
 -- Options of the Square Minimap Buttons module (ProjectAzilroka)
 L['Minimap Buttons / Bar'] = true
@@ -50,6 +51,10 @@ L['Prevents the bar from being dragged.'] = true
 L['Ignore List'] = true
 L['Buttons that stay on the minimap: one frame name or Lua pattern per line.'] = true
 L["Disabled while ElvUI's queue status mover is active."] = true
+L['Point of the bar that is attached to the minimap.'] = true
+L['Point of the minimap that the bar is attached to.'] = true
+L['The ElvUI or Tukui mover holds the position of the bar, so the anchor options are disabled.'] = true
+L['A button that is already in the bar stays there until you reload your User Interface.'] = true
 
 -- WoW Forever port: guard against ProjectAzilroka
 L['ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled, so this addon stays inactive. Disable one of the two to avoid conflicts.'] = true

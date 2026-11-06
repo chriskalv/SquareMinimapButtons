@@ -21,6 +21,11 @@
 --   petBattle     C_PetBattles.IsInBattle()
 --   newMail       HasNewMail() (SetNewMail(v) changes it and fires UPDATE_PENDING_MAIL)
 --   elvui.queueStatus  true: ElvUI's queue module is loaded (frame ElvUIQueueStatus exists)
+--   elvui.options true or { loaded = true|false, noEP = true }: ElvUI has its options table
+--                 ElvUI[1].Options.args and its plugin library ElvUI[1].Libs.EP (LibElvUIPlugin-1.0,
+--                 RegisterPlugin); loaded = true: ElvUI_Options is loaded already, RegisterPlugin calls
+--                 the callback at once, else STUB.FireElvUIOptions() calls the callbacks (as when
+--                 ElvUI_Options loads); noEP = true: the options table without the plugin library
 --   retailGlobals true: PVEFrame, ShowUIPanel, HideUIPanel and GroupFinderFrame_ShowGroupFrame
 --                 exist (Retail; WoW Forever has none of them)
 --   missing       { GameTimeFrame = true, QueueStatusButton = true, Tracking = true,
@@ -99,6 +104,9 @@ local function installLuaHelpers()
         for i = 1, select("#", ...) do parts[i] = tostring((select(i, ...))) end
         return table.concat(parts, delimiter)
     end
+
+    -- the client adds these to the string library (AceConfigCmd-3.0 uses string.trim and string.split)
+    string.trim, string.split, string.join = strtrim, strsplit, strjoin
 
     function tostringall(...)
         local n = select("#", ...)
@@ -1046,6 +1054,42 @@ local function installAddOns(config)
             STUB.calls.ElvUICreateMover.originPoint = { parent:GetPoint() }
         end
         ElvUI = { E, {}, {}, {} }
+        local elvOptions = config.elvui.options
+        if elvOptions then
+            if type(elvOptions) ~= "table" then elvOptions = {} end
+            E.Options = { type = "group", name = "ElvUI", args = {} }
+            STUB.elvuiPlugins = {}
+            STUB.elvuiOptionsLoaded = elvOptions.loaded == true
+            -- LibElvUIPlugin-1.0 RegisterPlugin(name, callback, isLib, version): only for a loaded
+            -- addon; the callback runs (in pcall) when ElvUI_Options is loaded, at once if it is
+            if not elvOptions.noEP then
+                E.Libs = {
+                    EP = {
+                        plugins = {},
+                        RegisterPlugin = function(self, name, callback, isLib, version)
+                            if not C_AddOns.IsAddOnLoaded(name) then return end
+                            local plugin = { name = name, callback = callback, isLib = isLib, version = version }
+                            self.plugins[name] = plugin
+                            STUB.elvuiPlugins[#STUB.elvuiPlugins + 1] = plugin
+                            if STUB.elvuiOptionsLoaded and callback then
+                                local ok, err = pcall(callback)
+                                if not ok then STUB.errors[#STUB.errors + 1] = tostring(err) end
+                            end
+                            return plugin
+                        end,
+                    },
+                }
+            end
+            function STUB.FireElvUIOptions()
+                STUB.elvuiOptionsLoaded = true
+                for _, plugin in ipairs(STUB.elvuiPlugins) do
+                    if plugin.callback then
+                        local ok, err = pcall(plugin.callback)
+                        if not ok then STUB.errors[#STUB.errors + 1] = tostring(err) end
+                    end
+                end
+            end
+        end
         if config.elvui.queueStatus then
             -- ElvUI's queue module (Modules/Misc/QueueStatus.lua LoadQueueStatus): holder of the
             -- QueueStatusButton
@@ -1204,6 +1248,11 @@ local function installUIFunctions()
         return category, nil
     end
     function Settings.RegisterAddOnCategory(category) STUB.settings.registered[#STUB.settings.registered + 1] = category end
+    function Settings.GetCategory(id)
+        for _, category in ipairs(STUB.settings.categories) do
+            if category.ID == id then return category end
+        end
+    end
     function Settings.OpenToCategory(id) STUB.settings.opened[#STUB.settings.opened + 1] = id; return true end
 
     Enum = Enum or {}
@@ -1221,7 +1270,7 @@ function InstallStubs(config)
     STUB = {
         config = config, time = 0, timers = {}, timerSeq = 0, frames = {}, regions = {},
         eventFrames = {}, chat = {}, errors = {}, popups = {}, popupsHidden = {}, reloads = 0,
-        stateDrivers = {}, stateDriverLog = {}, fades = {}, calls = {}, settings = { categories = {}, registered = {}, opened = {} },
+        stateDrivers = {}, stateDriverLog = {}, fades = {}, calls = {}, settings = { categories = {}, registered = {}, opened = {}, blizOptions = {}, dialogOpened = {}, defaultSize = {} },
         textureFileIDs = {}, loggedIn = config.loggedIn == true, combat = config.combat == true,
         petBattle = config.petBattle == true, newMail = config.newMail == true,
     }
@@ -1250,10 +1299,43 @@ function ResetWorld(config)
     InstallStubs(config)
 end
 
+-- AceConfigDialog-3.0 is the real library. Its calls are recorded in STUB.settings:
+--   blizOptions   { appName, name, parent, path... } per AddToBlizOptions (the real one runs: it
+--                 builds an AceGUI BlizOptionsGroup and registers it with the Settings stubs)
+--   defaultSize   { appName, width, height } per SetDefaultSize (the real one runs)
+--   dialogOpened  { appName, path... } per Open; the real Open builds AceGUI widgets that the stubs
+--                 do not draw, so this one only asks the registry for the table as Open does
+--                 (GetOptionsTable(appName)("dialog", "AceConfigDialog-3.0"), which validates it)
+function InstrumentAceConfigDialog()
+    local dialog = LibStub and LibStub("AceConfigDialog-3.0", true)
+    if not dialog or dialog.__stubbed then return end
+    dialog.__stubbed = true
+    local addToBlizOptions, setDefaultSize = dialog.AddToBlizOptions, dialog.SetDefaultSize
+    function dialog:AddToBlizOptions(appName, name, parent, ...)
+        local entry = { appName, name or false, parent or false, ... }
+        STUB.settings.blizOptions[#STUB.settings.blizOptions + 1] = entry
+        return addToBlizOptions(self, appName, name, parent, ...)
+    end
+    function dialog:SetDefaultSize(appName, width, height)
+        STUB.settings.defaultSize[#STUB.settings.defaultSize + 1] = { appName, width, height }
+        return setDefaultSize(self, appName, width, height)
+    end
+    function dialog:Open(appName, ...)
+        STUB.settings.dialogOpened[#STUB.settings.dialogOpened + 1] = { appName, ... }
+        local app = LibStub("AceConfigRegistry-3.0"):GetOptionsTable(appName)
+        if not app then
+            error(("%s isn't registed with AceConfigRegistry, unable to open config"):format(appName), 2)
+        end
+        return app("dialog", "AceConfigDialog-3.0")
+    end
+end
+
 -- Fresh client with the given configuration, addon files loaded in TOC order (not logged in yet).
 function ReloadAddon(config)
     ResetWorld(config)
-    return LoadAddon()
+    local ns = LoadAddon()
+    InstrumentAceConfigDialog()
+    return ns
 end
 
 -- The addon object as the addon itself sees it.
