@@ -143,6 +143,13 @@ describe("profile callbacks", function()
         assert_eq(SMB.db.IconSize, 22)
     end)
 
+    it("sets the position of the bar again before the rebuild", function()
+        local SMB, log = withSpies()
+        SMB.ApplyBarPosition = function() log[#log + 1] = "ApplyBarPosition" end
+        SMB.data:SetProfile("Other")
+        assert_eq(log, { "ApplyBarPosition", "Update", "HandleBlizzardButtons" })
+    end)
+
     it("without Update and HandleBlizzardButtons (package 1) ApplySettings only reads the settings", function()
         local SMB = started({})
         SMB.data:SetProfile("Other")

@@ -362,8 +362,26 @@ function Frame:SetClampRectInsets() end
 function Frame:SetUserPlaced(v) st(self).userPlaced = v end
 function Frame:IsUserPlaced() return st(self).userPlaced end
 function Frame:RegisterForDrag(...) st(self).dragButtons = { ... } end
-function Frame:StartMoving() st(self).moving = true end
-function Frame:StopMovingOrSizing() st(self).moving = false end
+-- StartMoving/StopMovingOrSizing: the client moves the frame with the cursor and, at the end,
+-- anchors it to UIParent at the new place (SetMoveTarget gives that place in tests) and marks it
+-- as placed by the user.
+function Frame:StartMoving()
+    local s = st(self)
+    if not s.movable then error("StartMoving: frame is not movable", 2) end
+    s.moving = true
+    STUB.calls.StartMoving = (STUB.calls.StartMoving or 0) + 1
+end
+function Frame:StopMovingOrSizing()
+    local s = st(self)
+    STUB.calls.StopMovingOrSizing = (STUB.calls.StopMovingOrSizing or 0) + 1
+    if s.moving and s.moveTarget then
+        local t = s.moveTarget
+        s.points = { { t[1], UIParent, t[2], t[3], t[4] } }
+        s.userPlaced = true
+    end
+    s.moving = false
+end
+function Frame:IsMoving() return st(self).moving == true end
 function Frame:SetHitRectInsets(...) st(self).hitRectInsets = { ... } end
 function Frame:IsMouseOver() return st(self).mouseOver == true end
 function Frame:SetID(id) st(self).id = id end
@@ -911,7 +929,13 @@ local function installAddOns(config)
 
     if config.elvui then
         local E = { db = { general = { cropIcon = config.elvui.cropIcon } } }
-        function E:CreateMover(...) STUB.calls.ElvUICreateMover = { ... } end
+        -- E:CreateMover(parent, name, textString, overlay, snapOffset, postdrag, types, ...)
+        -- (ElvUI/Game/Shared/General/Movers.lua); ElvUI starts the mover at the parent's point.
+        function E:CreateMover(parent, ...)
+            STUB.calls.ElvUICreateMover = { parent, ... }
+            STUB.calls.ElvUICreateMover.n = select("#", ...) + 1
+            STUB.calls.ElvUICreateMover.originPoint = { parent:GetPoint() }
+        end
         ElvUI = { E, {}, {}, {} }
         if config.elvui.frameAPI then
             for _, t in ipairs(FRAME_TYPES) do installElvUIFrameAPI(Methods[t]) end
@@ -999,24 +1023,41 @@ local function installUIFunctions()
         return false
     end
 
+    -- State drivers: the current condition per frame and state in STUB.stateDrivers, every call in
+    -- STUB.stateDriverLog. SetStateDriverHidden(frame, true|false) plays the secure state driver
+    -- manager: while a visibility driver is registered it hides or shows the frame, as when the
+    -- macro condition changes (for example [petbattle] at the start and end of a pet battle).
     function RegisterStateDriver(frame, state, condition)
         STUB.stateDrivers[frame] = STUB.stateDrivers[frame] or {}
         STUB.stateDrivers[frame][state] = condition
+        STUB.stateDriverLog[#STUB.stateDriverLog + 1] = { action = "register", frame = frame, state = state, condition = condition }
     end
     function UnregisterStateDriver(frame, state)
         if STUB.stateDrivers[frame] then STUB.stateDrivers[frame][state] = nil end
+        STUB.stateDriverLog[#STUB.stateDriverLog + 1] = { action = "unregister", frame = frame, state = state }
+    end
+    function SetStateDriverHidden(frame, hidden)
+        local drivers = STUB.stateDrivers[frame]
+        if not (drivers and drivers.visibility) then return false end
+        if hidden then frame:Hide() else frame:Show() end
+        return true
     end
     function RegisterAttributeDriver(frame, attribute, condition) RegisterStateDriver(frame, attribute, condition) end
     function UnregisterAttributeDriver(frame, attribute) UnregisterStateDriver(frame, attribute) end
 
-    function UIFrameFadeIn(frame, duration, from, to)
-        STUB.fades[#STUB.fades + 1] = { frame = frame, mode = "IN", duration = duration, from = from, to = to }
+    -- UIFrameFadeIn/Out as in Blizzard_SharedXMLBase/FrameUtil.lua (UIFrameFade): start alpha, then
+    -- frame:Show(); the fade itself is skipped, the frame gets the end alpha at once. Every call is
+    -- recorded in STUB.fades.
+    local function fade(mode, frame, duration, from, to)
+        STUB.fades[#STUB.fades + 1] = { frame = frame, mode = mode, duration = duration, from = from, to = to }
+        if from == nil then from = mode == "IN" and 0 or 1 end
+        if to == nil then to = mode == "IN" and 1 or 0 end
+        frame:SetAlpha(from)
+        frame:Show()
         frame:SetAlpha(to)
     end
-    function UIFrameFadeOut(frame, duration, from, to)
-        STUB.fades[#STUB.fades + 1] = { frame = frame, mode = "OUT", duration = duration, from = from, to = to }
-        frame:SetAlpha(to)
-    end
+    function UIFrameFadeIn(frame, duration, from, to) fade("IN", frame, duration, from, to) end
+    function UIFrameFadeOut(frame, duration, from, to) fade("OUT", frame, duration, from, to) end
 
     function ToggleGroupFinderFrame() STUB.calls.ToggleGroupFinderFrame = (STUB.calls.ToggleGroupFinderFrame or 0) + 1 end
     function MinimapMailFrameUpdate() STUB.calls.MinimapMailFrameUpdate = (STUB.calls.MinimapMailFrameUpdate or 0) + 1 end
@@ -1053,7 +1094,7 @@ function InstallStubs(config)
     STUB = {
         config = config, time = 0, timers = {}, timerSeq = 0, frames = {}, regions = {},
         eventFrames = {}, chat = {}, errors = {}, popups = {}, popupsHidden = {}, reloads = 0,
-        stateDrivers = {}, fades = {}, calls = {}, settings = { categories = {}, registered = {}, opened = {} },
+        stateDrivers = {}, stateDriverLog = {}, fades = {}, calls = {}, settings = { categories = {}, registered = {}, opened = {} },
         textureFileIDs = {}, loggedIn = config.loggedIn == true, combat = config.combat == true,
         petBattle = config.petBattle == true, newMail = config.newMail == true,
     }
@@ -1104,6 +1145,23 @@ function StartClient()
     if pa and pa.dbAtLogin and not pa.noDB and ProjectAzilroka then ProjectAzilroka[1].db = STUB.paDB end
     AdvanceTime(0)
     FireEvent("PLAYER_ENTERING_WORLD", true, false)
+end
+
+-- Moves the cursor drag of a frame to this place (see Frame:StopMovingOrSizing).
+function SetMoveTarget(frame, point, relativePoint, x, y)
+    st(frame).moveTarget = { point, relativePoint or point, x or 0, y or 0 }
+end
+
+-- Combat: InCombatLockdown() and the events PLAYER_REGEN_DISABLED (entering) and
+-- PLAYER_REGEN_ENABLED (leaving, fired after the lockdown ends, as in the client).
+function SetCombat(inCombat)
+    if inCombat then
+        STUB.combat = true
+        FireEvent("PLAYER_REGEN_DISABLED")
+    else
+        STUB.combat = false
+        FireEvent("PLAYER_REGEN_ENABLED")
+    end
 end
 
 function ChatContains(text)

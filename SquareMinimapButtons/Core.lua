@@ -208,11 +208,13 @@ end
 
 SMB.Defaults = SMB.BuildDefaults(SMB.IsForever)
 
--- Called on profile change, copy and reset: read the settings again and rebuild what exists.
+-- Called on profile change, copy and reset: read the settings again and rebuild what exists
+-- (position and lock of the bar, the bar, the Blizzard buttons).
 function SMB:ApplySettings()
 	if not self.data then return end
 	self.db = self.data.profile
 	if self.blocked then return end
+	if self.ApplyBarPosition then self:ApplyBarPosition() end
 	if self.Update then self:Update() end
 	if self.HandleBlizzardButtons then self:HandleBlizzardButtons() end
 end

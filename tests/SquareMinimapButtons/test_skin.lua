@@ -330,7 +330,9 @@ end)
 describe("fading hooks", function()
     it("OnEnter and OnLeave run without the bar", function()
         local SMB = fresh()
-        assert_nil(SMB.Bar)
+        local realBar = SMB.Bar
+        SMB.Bar = nil -- as with BarEnabled off or before Initialize
+        STUB.fades = {}
         local button = NewLibDBIconButton("Alpha")
         SMB:SkinMinimapButton(button)
         local ok, err = pcall(function()
@@ -340,14 +342,17 @@ describe("fading hooks", function()
         assert_true(ok, tostring(err))
         assert_eq(#STUB.fades, 0)
         assert_eq(button.log, { "OnEnter", "OnLeave" }, "the button's own scripts still run")
+        SMB.Bar = realBar
     end)
 
     it("fade the bar in on OnEnter and out on OnLeave only with BarMouseOver", function()
         local SMB = fresh()
         local button = NewLibDBIconButton("Alpha")
         SMB:SkinMinimapButton(button)
+        local realBar = SMB.Bar
         SMB.Bar = CreateFrame("Frame", nil, UIParent)
         SMB.Bar:SetAlpha(0.5)
+        STUB.fades = {}
         button:GetScript("OnEnter")(button)
         assert_eq(#STUB.fades, 1)
         assert_eq(STUB.fades[1].mode, "IN")
@@ -364,6 +369,6 @@ describe("fading hooks", function()
         button:GetScript("OnEnter")(button)
         button:GetScript("OnLeave")(button)
         assert_eq(#STUB.fades, 2, "a hidden bar does not fade")
-        SMB.Bar = nil
+        SMB.Bar = realBar
     end)
 end)
