@@ -1,9 +1,10 @@
 {
   "name": "zippyaddons",
   "private": true,
-  "description": "Zippy's addons for WoW Forever; development tools (Lua test runner). Not part of any addon release.",
+  "description": "Zippy's addons for WoW Forever; development tools (Lua test runner, release zips). Not part of any addon release.",
   "scripts": {
-    "test": "node tools/addon_test.mjs SquareMinimapButtons"
+    "test": "node tools/addon_test.mjs SquareMinimapButtons && node --test tests/release.test.mjs",
+    "release:smb": "node tools/release.mjs SquareMinimapButtons"
   },
   "devDependencies": {
     "fengari": "0.1.5",
