@@ -20,6 +20,7 @@
 --   combat        InCombatLockdown()
 --   petBattle     C_PetBattles.IsInBattle()
 --   newMail       HasNewMail()
+--   noSecretAPI   true: no issecretvalue (clients without the secret system)
 --   savedVariables  initial value of SquareMinimapButtonsDB
 --
 -- Lua 5.3 (fengari) runs these stubs; the addon itself must stay Lua 5.1 code.
@@ -460,10 +461,11 @@ Methods.Minimap = MinimapMethods
 
 -- Texture methods
 local Texture = setmetatable({}, { __index = Common })
-function Texture:SetTexture(file)
+function Texture:SetTexture(...)
     local s = st(self)
-    s.texture = file
+    s.texture = (...)
     s.atlas = nil
+    s.setTextureArgs = select("#", ...) -- 0 for SetTexture() without argument
 end
 function Texture:GetTexture() return st(self).texture end
 function Texture:GetTextureFileID()
@@ -485,12 +487,19 @@ function Texture:SetTexCoord(...)
         s.texCoord = { ... }
     end
 end
-function Texture:GetTexCoord() return unpack(st(self).texCoord) end
+-- A texture marked with MarkSecretTexCoord returns its coordinates as secret values: until the next
+-- GetTexCoord call, issecretvalue answers true for every number (Lua cannot tag a single number).
+function Texture:GetTexCoord()
+    local s = st(self)
+    STUB.secretTexCoordPending = s.secretTexCoord == true
+    return unpack(s.texCoord)
+end
 function Texture:SetVertexColor(r, g, b, a) st(self).vertexColor = { r, g, b, a or 1 } end
 function Texture:GetVertexColor() return unpack(st(self).vertexColor) end
 function Texture:SetDrawLayer(layer, sublevel) local s = st(self); s.layer, s.sublevel = layer, sublevel end
 function Texture:GetDrawLayer() local s = st(self); return s.layer, s.sublevel end
 function Texture:SetMask(mask) st(self).mask = mask end
+function Texture:GetMask() return st(self).mask end
 function Texture:AddMaskTexture(mask) st(self).maskTexture = mask end
 function Texture:RemoveMaskTexture() st(self).maskTexture = nil end
 function Texture:SetDesaturated(v) st(self).desaturated = v end
@@ -671,6 +680,8 @@ local function installDefaultUI(config)
     MinimapCluster.MinimapContainer = CreateFrame("Frame", nil, MinimapCluster)
     Minimap = CreateFrame("Minimap", "Minimap", MinimapCluster.MinimapContainer)
     Minimap:SetSize(198, 198)
+    -- children in the order of Mainline/Minimap.xml: ZoomHitArea, ZoomIn, ZoomOut, MinimapBackdrop
+    Minimap.ZoomHitArea = CreateFrame("Frame", nil, Minimap)
     Minimap.ZoomIn = CreateFrame("Button", nil, Minimap)
     Minimap.ZoomIn:Hide()
     Minimap.ZoomOut = CreateFrame("Button", nil, Minimap)
@@ -949,7 +960,10 @@ local function installUIFunctions()
         if type(fn) == "string" then fn = _G[fn] end
         return securecallfunction(fn, ...)
     end
-    issecretvalue = function() return false end
+    issecretvalue = function(value)
+        return STUB.secretTexCoordPending == true and type(value) == "number"
+    end
+    if STUB.config.noSecretAPI then issecretvalue = nil end
     canaccessvalue = function() return true end
     issecure = function() return false end
     issecurevariable = function() return false, nil end
@@ -1098,6 +1112,139 @@ function ChatContains(text)
         if line:find(text, 1, true) then count = count + 1 end
     end
     return count
+end
+
+
+--------------------------------------------------------------------------------
+-- Test buttons on the minimap
+--------------------------------------------------------------------------------
+
+-- Marks a texture whose GetTexCoord returns secret values (see Texture:GetTexCoord).
+function MarkSecretTexCoord(texture)
+    st(texture).secretTexCoord = true
+end
+
+-- A minimap button as LibDBIcon-1.0 builds it (createButton and the Reset* functions of
+-- LibDBIcon-1.0.lua): Button "LibDBIcon10_<name>" with parent Minimap, strata MEDIUM and level 8,
+-- both fixed, clicks and drag registered, highlight 136477, border 136430 (OVERLAY), background
+-- 136467 (BACKGROUND), icon (ARTWORK) with LibDBIcon's coordinates: 5 % inset on each side
+-- (updateCoord). opts.icon: icon texture (default 134400).
+function NewLibDBIconButton(name, opts)
+    opts = opts or {}
+    local mainline = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE
+    local button = CreateFrame("Button", "LibDBIcon10_" .. name, Minimap)
+    button.dataObject = { icon = opts.icon or 134400 }
+    button.db = {}
+    button:SetFrameStrata("MEDIUM")
+    button:SetFixedFrameStrata(true)
+    button:SetFrameLevel(8)
+    button:SetFixedFrameLevel(true)
+    button:RegisterForClicks("anyUp")
+    button:RegisterForDrag("LeftButton")
+
+    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetTexture(136477)
+    button:SetHighlightTexture(highlight)
+    button:SetSize(31, 31)
+
+    local border = button:CreateTexture(nil, "OVERLAY")
+    button.border = border
+    border:SetPoint("TOPLEFT", 0, 0)
+    border:SetTexture(136430)
+    border:SetSize(mainline and 50 or 53, mainline and 50 or 53)
+
+    local background = button:CreateTexture(nil, "BACKGROUND")
+    button.background = background
+    background:SetTexture(136467)
+    if mainline then
+        background:SetSize(24, 24)
+        background:SetPoint("CENTER", 0, 0)
+    else
+        background:SetSize(20, 20)
+        background:SetPoint("TOPLEFT", 7, -5)
+    end
+
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetTexture(button.dataObject.icon)
+    icon:SetTexCoord(0.05, 0.95, 0.05, 0.95)
+    icon:SetSize(mainline and 18 or 17, mainline and 18 or 17)
+    if mainline then
+        icon:SetPoint("CENTER")
+    else
+        icon:SetPoint("TOPLEFT", 7, -6)
+    end
+    button.icon = icon
+
+    button.isMouseDown = false
+    button.log = {}
+    button:SetScript("OnEnter", function(self) self.log[#self.log + 1] = "OnEnter" end)
+    button:SetScript("OnLeave", function(self) self.log[#self.log + 1] = "OnLeave" end)
+    button:SetScript("OnClick", function(self) self.log[#self.log + 1] = "OnClick" end)
+    button:SetScript("OnDragStart", function(self) self.log[#self.log + 1] = "OnDragStart" end)
+    button:SetScript("OnDragStop", function(self) self.log[#self.log + 1] = "OnDragStop" end)
+    return button
+end
+
+-- A named minimap button of an addon that draws its icon with the full texture coordinates
+-- (0, 1, 0, 1), for example TomCats ("TomCats-MinimapButton"). opts.parent (default Minimap),
+-- opts.icon (default 134400), opts.border: file ID or path of an extra OVERLAY texture.
+function NewPlainButton(name, opts)
+    opts = opts or {}
+    local button = CreateFrame("Button", name, opts.parent or Minimap)
+    button:SetSize(31, 31)
+    local icon = button:CreateTexture(nil, "BACKGROUND")
+    icon:SetTexture(opts.icon or 134400)
+    icon:SetAllPoints(button)
+    button.icon = icon
+    if opts.border then
+        button.border = button:CreateTexture(nil, "OVERLAY")
+        button.border:SetTexture(opts.border)
+    end
+    return button
+end
+
+-- Map pins on the minimap, one per field that ProjectAzilroka's scan checks. Every pin is a named
+-- Button, so that only the pin filter can reject it (the Questie pin by name has the name
+-- QuestieFrame<n>).
+PIN_KINDS = {
+    "HereBeDragons.uiMapID", "HereBeDragons.minimap", "HandyNotes.acquired", "HandyNotes.arrow",
+    "Zygor.waypoint", "Zygor.isZygorWaypoint", "GatherMate2.nodeID", "GatherMate2.titleXY",
+    "Questie.data", "Questie.name", "TomTom.uid", "TomTom.point",
+}
+
+local pinSeq = 0
+function NewMinimapPin(kind)
+    pinSeq = pinSeq + 1
+    local name = "TestPin" .. pinSeq
+    if kind == "Questie.name" then name = "QuestieFrame" .. pinSeq end
+    local pin = CreateFrame("Button", name, Minimap)
+    local icon = pin:CreateTexture(nil, "ARTWORK")
+    icon:SetTexture(134400)
+    pin.icon = icon
+    if kind == "HereBeDragons.uiMapID" then pin.uiMapID = 1429
+    elseif kind == "HereBeDragons.minimap" then pin.minimap = true
+    elseif kind == "HandyNotes.acquired" then pin.acquired = true
+    elseif kind == "HandyNotes.arrow" then pin.arrow = pin:CreateTexture(nil, "OVERLAY")
+    elseif kind == "Zygor.waypoint" then pin.waypoint = {}
+    elseif kind == "Zygor.isZygorWaypoint" then pin.isZygorWaypoint = true
+    elseif kind == "GatherMate2.nodeID" then pin.nodeID = 1731
+    elseif kind == "GatherMate2.titleXY" then pin.title, pin.x, pin.y = "Copper Vein", 0.5, 0.5
+    elseif kind == "Questie.data" then pin.data = { UiMapID = 1429 }
+    elseif kind == "Questie.name" then -- the name is enough
+    elseif kind == "TomTom.uid" then pin.uid = "tomtom-1"
+    elseif kind == "TomTom.point" then pin.point = { uid = "tomtom-2" }
+    else error("unknown pin kind " .. tostring(kind), 2) end
+    return pin
+end
+
+-- A Button without a global name; withIcon: with an .icon texture (counts as a button then).
+function NewUnnamedButton(withIcon)
+    local button = CreateFrame("Button", nil, Minimap)
+    if withIcon then
+        button.icon = button:CreateTexture(nil, "ARTWORK")
+        button.icon:SetTexture(134400)
+    end
+    return button
 end
 
 InstallStubs({})

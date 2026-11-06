@@ -220,6 +220,7 @@ describe("slash commands", function()
     it("scan calls GrabMinimapButtons(true) when it exists, otherwise prints a hint", function()
         ReloadAddon({})
         StartClient()
+        GetAddon().GrabMinimapButtons = nil -- as before the scan was ported
         RunSlash("/zmb", "scan")
         assert_eq(ChatContains("Scanning is not available yet."), 1)
         local arg
