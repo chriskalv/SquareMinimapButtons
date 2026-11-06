@@ -125,10 +125,44 @@ describe("crop", function()
         local SMB = fresh()
         local button = NewLibDBIconButton("Alpha")
         SMB:SkinMinimapButton(button)
-        button.icon:SetTexCoord(0, 1, 0, 1) -- LibDBIcon's OnMouseDown does this
+        button:GetScript("OnMouseDown")(button) -- LibDBIcon: full coordinates while pressed
+        assertCoords(button.icon, 0, 1, 0, 1, "OnMouseDown shows the full icon")
         button:GetScript("OnLeave")(button)
         assertCoords(button.icon, 0, 1, 0, 1, "LibDBIcon's icon was not cropped, so OnLeave leaves it")
         assert_eq(button.log[#button.log], "OnLeave", "the button's own OnLeave still runs")
+        button:GetScript("OnMouseUp")(button)
+        assertCoords(button.icon, 0.05, 0.95, 0.05, 0.95, "OnMouseUp restores LibDBIcon's inset")
+    end)
+
+    it("does not crop coordinates that differ from the full ones in a single value", function()
+        -- Each case changes exactly one of the eight values that HandleRegion compares.
+        local cases = {
+            { 0.1, 0, 0, 1, 1, 0, 1, 1 }, { 0, 0.1, 0, 1, 1, 0, 1, 1 },
+            { 0, 0, 0.1, 1, 1, 0, 1, 1 }, { 0, 0, 0, 0.5, 1, 0, 1, 1 },
+            { 0, 0, 0, 1, 0.9, 0, 1, 1 }, { 0, 0, 0, 1, 1, 0.1, 1, 1 },
+            { 0, 0, 0, 1, 1, 0, 0.9, 1 }, { 0, 0, 0, 1, 1, 0, 1, 0.5 },
+        }
+        for i, coords in ipairs(cases) do
+            local SMB = fresh()
+            local button = NewPlainButton("PlainAddonButton")
+            button.icon:SetTexCoord(unpack(coords))
+            SMB:SkinMinimapButton(button)
+            assert_eq(texCoord(button.icon), coords, "case " .. i .. ": coordinates unchanged")
+            button.icon:SetTexCoord(0, 1, 0, 1)
+            button:GetScript("OnLeave")(button)
+            assert_eq(texCoord(button.icon), FULL, "case " .. i .. ": no crop restored on OnLeave")
+        end
+    end)
+
+    it("does not crop a texture cut only at the bottom (0, 1, 0, 0.5)", function()
+        local SMB = fresh()
+        local button = NewPlainButton("PlainAddonButton")
+        button.icon:SetTexCoord(0, 1, 0, 0.5)
+        SMB:SkinMinimapButton(button)
+        assertCoords(button.icon, 0, 1, 0, 0.5)
+        button.icon:SetTexCoord(0, 1, 0, 1)
+        button:GetScript("OnLeave")(button)
+        assertCoords(button.icon, 0, 1, 0, 1, "no OnLeave restore for an uncropped region")
     end)
 end)
 

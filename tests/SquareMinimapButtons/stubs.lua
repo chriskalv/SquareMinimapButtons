@@ -1124,11 +1124,22 @@ function MarkSecretTexCoord(texture)
     st(texture).secretTexCoord = true
 end
 
+-- LibDBIcon-1.0's updateCoord: full coordinates while the mouse is down, else 5 % inset per side.
+local function libDBIconUpdateCoord(self)
+    local coords = self:GetParent().dataObject.iconCoords or { 0, 1, 0, 1 }
+    local deltaX, deltaY = 0, 0
+    if not self:GetParent().isMouseDown then
+        deltaX = (coords[2] - coords[1]) * 0.05
+        deltaY = (coords[4] - coords[3]) * 0.05
+    end
+    self:SetTexCoord(coords[1] + deltaX, coords[2] - deltaX, coords[3] + deltaY, coords[4] - deltaY)
+end
+
 -- A minimap button as LibDBIcon-1.0 builds it (createButton and the Reset* functions of
 -- LibDBIcon-1.0.lua): Button "LibDBIcon10_<name>" with parent Minimap, strata MEDIUM and level 8,
 -- both fixed, clicks and drag registered, highlight 136477, border 136430 (OVERLAY), background
 -- 136467 (BACKGROUND), icon (ARTWORK) with LibDBIcon's coordinates: 5 % inset on each side
--- (updateCoord). opts.icon: icon texture (default 134400).
+-- (updateCoord), OnMouseDown and OnMouseUp that call icon:UpdateCoord(). opts.icon: icon texture (default 134400).
 function NewLibDBIconButton(name, opts)
     opts = opts or {}
     local mainline = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE
@@ -1166,7 +1177,8 @@ function NewLibDBIconButton(name, opts)
 
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetTexture(button.dataObject.icon)
-    icon:SetTexCoord(0.05, 0.95, 0.05, 0.95)
+    icon.UpdateCoord = libDBIconUpdateCoord
+    icon:UpdateCoord()
     icon:SetSize(mainline and 18 or 17, mainline and 18 or 17)
     if mainline then
         icon:SetPoint("CENTER")
@@ -1182,6 +1194,16 @@ function NewLibDBIconButton(name, opts)
     button:SetScript("OnClick", function(self) self.log[#self.log + 1] = "OnClick" end)
     button:SetScript("OnDragStart", function(self) self.log[#self.log + 1] = "OnDragStart" end)
     button:SetScript("OnDragStop", function(self) self.log[#self.log + 1] = "OnDragStop" end)
+    button:SetScript("OnMouseDown", function(self)
+        self.log[#self.log + 1] = "OnMouseDown"
+        self.isMouseDown = true
+        self.icon:UpdateCoord()
+    end)
+    button:SetScript("OnMouseUp", function(self)
+        self.log[#self.log + 1] = "OnMouseUp"
+        self.isMouseDown = false
+        self.icon:UpdateCoord()
+    end)
     return button
 end
 
