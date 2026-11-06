@@ -145,7 +145,7 @@ Checks in the WoW Forever client, once with ElvUI and once without:
 
 - [ ] **C1**: the addon loads without errors; `/zmb` opens the dialog; without ProjectAzilroka there is no guard message.
 - [ ] **C2**: LibDBIcon buttons become square, without the round border, with the icon cropped; map pins (HandyNotes, TomTom, Questie, if used) stay on the map.
-- [ ] **C3**: the bar matches the screenshot (column, size, spacing, border, backdrop, position).
+- [ ] **C3**: the bar matches the screenshot in column, border, backdrop and position; size 18 and spacing 0 are the defaults the owner chose on 2026-11-06, the screenshot showed 22 and 2.
 - [ ] **C4**: tracking and calendar button in the bar: a click opens the menu or the calendar; the tracking button stays visible, the mail indicator does not jump; `taintLog` has no entries from this addon.
 - [ ] **C5**: queue option on (without ElvUI): the eye is in the bar, a click opens the group finder, opening and closing Edit Mode and scaling the minimap cause no taint errors and no jump back; only then consider turning the option on by default.
 - [ ] **C6**: together with ElvUI's minimap (tracking position, calendar, mail indicator, `ElvUI_MinimapHolder`) and ElvUI's queue module (option *Move Queue Status Icon* disabled, the eye at ElvUI's queue status mover, no empty frame in the bar).
