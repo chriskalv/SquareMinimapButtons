@@ -89,12 +89,14 @@ function resolveXml(xmlPath, out, errors, stack) {
   const re = /<\s*(Script|Include)\b([^>]*)>/g;
   let m;
   while ((m = re.exec(text)) !== null) {
-    const fileAttr = /\bfile\s*=\s*"([^"]*)"/.exec(m[2]);
+    const fileAttr = /\bfile\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(m[2]);
     if (!fileAttr) {
-      if (m[1] === 'Include') errors.push(`${rel(xmlPath)}: <Include> without file`);
-      continue; // inline <Script> blocks are not used by these addons
+      // Neither these addons nor Ace3 use inline <Script> blocks; report any tag without a file
+      // instead of skipping it silently.
+      errors.push(`${rel(xmlPath)}: <${m[1]}> without file attribute`);
+      continue;
     }
-    const target = clientPath(dir, fileAttr[1]);
+    const target = clientPath(dir, fileAttr[1] !== undefined ? fileAttr[1] : fileAttr[2]);
     if (m[1] === 'Include') {
       resolveXml(target, out, errors, [...stack, xmlPath]);
     } else if (!fs.existsSync(target)) {

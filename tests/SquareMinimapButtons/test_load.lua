@@ -2,6 +2,7 @@
 -- reload dialog, addon compartment.
 
 local GUARD_TEXT = "ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled"
+local UNREADABLE_TEXT = "ProjectAzilroka is loaded, but its settings could not be read"
 
 local function indexOf(list, value)
     for i, v in ipairs(list) do
@@ -166,6 +167,17 @@ describe("guard against ProjectAzilroka", function()
         SMB, initCalls = startWithSpy({ pa = { enabled = false, dbAtLogin = true } })
         assert_false(SMB.blocked)
         assert_eq(initCalls(), 1)
+    end)
+
+    it("with ProjectAzilroka loaded but its settings unreadable the addon stays inactive and says so", function()
+        local SMB, initCalls = startWithSpy({ pa = { enabled = true, noDB = true } })
+        assert_true(SMB.blocked, "blocked")
+        assert_eq(initCalls(), 0, "Initialize not called")
+        assert_eq(ChatContains(UNREADABLE_TEXT), 1, "one chat message about unreadable settings")
+        assert_eq(ChatContains(GUARD_TEXT), 0, "no claim that PA's module is enabled")
+        RunSlash("/zmb", "scan")
+        assert_eq(ChatContains(UNREADABLE_TEXT), 2, "/zmb scan repeats the same reason")
+        assert_eq(ChatContains(GUARD_TEXT), 0)
     end)
 
     it("a blocked addon does not rebuild on profile changes", function()

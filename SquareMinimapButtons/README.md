@@ -8,7 +8,7 @@ Port of the *Square Minimap Buttons* module of [ProjectAzilroka](https://github.
 
 The code is ported from ProjectAzilroka's module `Modules/SquareMinimapButtons.lua` and the helpers of its core. Zippy reports that Azilroka personally allowed him to port this part of ProjectAzilroka to WoW Forever (reported on 2026-11-05); the written record of the permission will be added to `LICENSE.txt`. The addon keeps Azilroka's name for the module and his copyright notice.
 
-If ProjectAzilroka is loaded at the same time and its Square Minimap Buttons module is enabled, this addon stays inactive and says so once in the chat.
+If ProjectAzilroka is loaded at the same time and its Square Minimap Buttons module is enabled, this addon stays inactive and says so once in the chat. The same happens, with its own message, when ProjectAzilroka is loaded but its settings cannot be read.
 
 ## Install
 
@@ -26,6 +26,8 @@ If ProjectAzilroka is loaded at the same time and its Square Minimap Buttons mod
 The addon compartment entry opens the options as well.
 
 ## Changes from the original
+
+Planned for version 1.0.0 and implemented step by step in packages 2 to 5; in the current state only the client detection, the default profile, the guard and the slash commands exist.
 
 - Client detection for WoW Forever (`WOW_PROJECT_ID == WOW_PROJECT_CAMELOT`); ProjectAzilroka knows only Retail and Classic.
 - Default profile after Zippy's classic UI: one column of 22 px buttons, anchored inside the top left corner of the minimap (`ButtonsPerRow` 1, `IconSize` 22; ProjectAzilroka: 12 and 20, bar at the right screen edge).

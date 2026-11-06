@@ -13,7 +13,8 @@
 --   player        { name, realm, class, race, faction }
 --   pa            false/nil, or { enabled = true|false, dbAtLogin = true|false }: ProjectAzilroka
 --                 loaded; its SquareMinimapButtons module enabled or not; dbAtLogin: PA sets its
---                 profile only in its own PLAYER_LOGIN handler, after this addon's OnEnable
+--                 profile only in its own PLAYER_LOGIN handler, after this addon's OnEnable;
+--                 noDB = true: ProjectAzilroka never sets its profile (its settings cannot be read)
 --   elvui         false/nil, or { cropIcon = n, frameAPI = true|false }: ElvUI loaded
 --   tukui, addonskins   true: these addons are enabled and loaded
 --   combat        InCombatLockdown()
@@ -891,7 +892,7 @@ local function installAddOns(config)
         local module = { name = "ProjectAzilroka_SquareMinimapButtons", isPA = true }
         PA.SMB = module
         STUB.paDB = { SquareMinimapButtons = { Enable = config.pa.enabled ~= false } }
-        if not config.pa.dbAtLogin then PA.db = STUB.paDB end
+        if not config.pa.dbAtLogin and not config.pa.noDB then PA.db = STUB.paDB end
         ProjectAzilroka = { PA, {}, {} }
         SquareMinimapButtons = module
         STUB.paModule = module
@@ -1086,7 +1087,7 @@ function StartClient()
     STUB.loggedIn = true
     FireEvent("PLAYER_LOGIN")
     local pa = STUB.config.pa
-    if pa and pa.dbAtLogin and ProjectAzilroka then ProjectAzilroka[1].db = STUB.paDB end
+    if pa and pa.dbAtLogin and not pa.noDB and ProjectAzilroka then ProjectAzilroka[1].db = STUB.paDB end
     AdvanceTime(0)
     FireEvent("PLAYER_ENTERING_WORLD", true, false)
 end

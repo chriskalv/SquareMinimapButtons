@@ -253,21 +253,31 @@ function SMB:IsProjectAzilrokaActive()
 	return type(module) == 'table' and module.Enable == true
 end
 
-function SMB:Block()
+-- reason: the guard message for the chat (PA module enabled, or PA settings unreadable)
+function SMB:Block(reason)
 	self.blocked = true
+	self.guardMessage = reason or self.guardMessage or L['ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled, so this addon stays inactive. Disable one of the two to avoid conflicts.']
 	if not self.guardWarned then
 		self.guardWarned = true
-		self:Message(L['ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled, so this addon stays inactive. Disable one of the two to avoid conflicts.'])
+		self:Message(self.guardMessage)
 	end
+end
+
+function SMB:GuardMessage()
+	return self.guardMessage or L['ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled, so this addon stays inactive. Disable one of the two to avoid conflicts.']
 end
 
 function SMB:Start()
 	local active = self:IsProjectAzilrokaActive()
 	if active == nil then
-		active = true -- profile still unknown: ProjectAzilroka enables the module by default
+		-- Profile still unknown one frame after PLAYER_LOGIN (for example, ProjectAzilroka failed to
+		-- load its settings): stay inactive to be safe, since ProjectAzilroka enables the module by
+		-- default, but say that its settings could not be read.
+		self:Block(L['ProjectAzilroka is loaded, but its settings could not be read, so this addon stays inactive. Disable one of the two to avoid conflicts.'])
+		return
 	end
 	if active then
-		self:Block()
+		self:Block(L['ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled, so this addon stays inactive. Disable one of the two to avoid conflicts.'])
 		return
 	end
 
@@ -281,7 +291,7 @@ end
 
 function SMB:OpenOptions()
 	if self.blocked then
-		self:Message(L['ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled, so this addon stays inactive. Disable one of the two to avoid conflicts.'])
+		self:Message(self:GuardMessage())
 		return false
 	end
 
@@ -310,7 +320,7 @@ function SMB:SlashCommand(input)
 		self:OpenOptions()
 	elseif command == 'scan' then
 		if self.blocked then
-			self:Message(L['ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled, so this addon stays inactive. Disable one of the two to avoid conflicts.'])
+			self:Message(self:GuardMessage())
 		elseif self.GrabMinimapButtons then
 			self:GrabMinimapButtons(true)
 		else

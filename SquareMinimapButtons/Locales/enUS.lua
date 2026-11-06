@@ -53,6 +53,7 @@ L["Disabled while ElvUI's queue status mover is active."] = true
 
 -- WoW Forever port: guard against ProjectAzilroka
 L['ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled, so this addon stays inactive. Disable one of the two to avoid conflicts.'] = true
+L['ProjectAzilroka is loaded, but its settings could not be read, so this addon stays inactive. Disable one of the two to avoid conflicts.'] = true
 
 -- WoW Forever port: slash command
 L['Usage: /zmb [scan | reset] (also /zippyminimap)'] = true
