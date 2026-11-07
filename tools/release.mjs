@@ -9,8 +9,8 @@
 // repository root). <Version> is the "## Version:" line of <AddonFolder>/<Addon>.toc; without it the
 // script stops with an error. The zip has exactly one root folder, <Addon>/, which holds every file of
 // the addon folder (sorted, paths with "/"). Left out at any depth: names starting with a dot, *.zip
-// files and the folders tests/, tools/ and node_modules/ (development files live outside the addon
-// folders; the rule is a safety net). Prints the path of the zip, the number of entries and its size,
+// files and the folders tests/, tools/ and node_modules/, plus a release.json at the root of the addon
+// folder (development files and build output live outside the addon folders; the rule is a safety net). Prints the path of the zip, the number of entries and its size,
 // then the path of the release.json; exit code 1 on any error.
 //
 // release.json: addon managers for WoW Forever detect updates through the release.json that the
@@ -87,7 +87,7 @@ function readToc(addonDir) {
 
 export function readVersion(addonDir) {
   const { tocPath, text } = readToc(addonDir);
-  const match = /^##\s*Version\s*:\s*(.*?)\s*$/m.exec(text);
+  const match = /^##[ \t]*Version[ \t]*:[ \t]*(.*?)[ \t]*\r?$/m.exec(text);
   if (!match || match[1] === '') throw new Error(`no "## Version:" line in ${tocPath}`);
   const version = match[1];
   if (!/^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(version)) {
@@ -100,7 +100,7 @@ export function readVersion(addonDir) {
 export function readInterface(addonDir) {
   const { tocPath, text } = readToc(addonDir);
   for (const key of ['Interface-Forever', 'Interface']) {
-    const match = new RegExp(`^##\\s*${key}\\s*:\\s*(.*?)\\s*$`, 'm').exec(text);
+    const match = new RegExp(`^##[ \\t]*${key}[ \\t]*:[ \\t]*(.*?)[ \\t]*\\r?$`, 'm').exec(text);
     if (!match) continue;
     if (!/^\d+$/.test(match[1])) throw new Error(`"## ${key}:" in ${tocPath} is not a number: "${match[1]}"`);
     return Number(match[1]);
@@ -143,6 +143,8 @@ export function collectFiles(addonDir) {
       const isDirectory = entry.isDirectory();
       if (!isDirectory && !entry.isFile()) throw new Error(`not a file or folder: ${abs}`);
       if (isExcluded(entry.name, isDirectory)) continue;
+      // a release.json from an earlier run with --out inside the addon folder is build output
+      if (prefix === '' && !isDirectory && entry.name === 'release.json') continue;
       if (isDirectory) {
         out.push({ rel: `${prefix}${entry.name}/`, abs, isDirectory: true });
         walk(abs, `${prefix}${entry.name}/`);

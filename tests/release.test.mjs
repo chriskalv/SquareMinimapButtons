@@ -275,6 +275,18 @@ test('a TOC without an interface line, or with an interface that is no number, i
   assert.throws(() => release(list.copy, path.join(list.work, 'out')), /"## Interface:" .* is not a number/);
 });
 
+test('an empty interface or version line does not take its value from the next line', (t) => {
+  const emptyForever = addonWithHeader(t, '## Interface-Forever:\n## Interface: 16001\n## Version: 1.0.0\n');
+  assert.throws(() => release(emptyForever.copy, path.join(emptyForever.work, 'out')), /"## Interface-Forever:" .* is not a number: ""/);
+  const emptyLast = addonWithHeader(t, '## Version: 1.0.0\n## Interface:\n16001\n');
+  assert.throws(() => release(emptyLast.copy, path.join(emptyLast.work, 'out')), /"## Interface:" .* is not a number: ""/);
+  const emptyVersion = addonWithHeader(t, '## Interface: 16001\n## Version:\nCore\n');
+  assert.throws(() => release(emptyVersion.copy, path.join(emptyVersion.work, 'out')), /no "## Version:" line/);
+  const crlf = addonWithHeader(t, '## Interface-Forever: 16004 \r\n## Version: 1.2.3\r\n');
+  const { releaseJsonPath } = release(crlf.copy, path.join(crlf.work, 'out'));
+  assert.equal(fs.readFileSync(releaseJsonPath, 'utf8'), expectedReleaseJson(ADDON, '1.2.3', 16004), 'CRLF and trailing blanks');
+});
+
 test('an existing release.json in the output folder is overwritten', (t) => {
   const out = tempDir(t);
   fs.writeFileSync(path.join(out, 'release.json'), '{"releases":[{"name":"Old"}]}\n');
@@ -311,6 +323,7 @@ test('development files, dot files and zips in the addon folder are left out', (
     '.hidden': 'dot file',
     'Locales/.DS_Store': 'dot file',
     'old-1.0.0.zip': 'zip',
+    'release.json': '{"releases":[]}\n',
   };
   for (const [rel, text] of Object.entries(planted)) {
     fs.mkdirSync(path.dirname(path.join(copy, rel)), { recursive: true });
