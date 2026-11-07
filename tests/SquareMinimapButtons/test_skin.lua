@@ -443,6 +443,18 @@ describe("mask textures (nachtrag 2: empty button of Connoisseur & Restocker)", 
         assert_true(StubState(mask).setTextureArgs ~= 0, "never SetTexture() without argument")
     end)
 
+    it("HandleRegion leaves a mask alone when called with one directly", function()
+        local SMB = fresh()
+        local button, mask = connoisseurButton()
+        local maskPoints = StubState(mask).points
+        SMB:HandleRegion(button, mask)
+        assert_eq(mask:GetTexture(), MASK_FILE)
+        assert_true(StubState(mask).points == maskPoints, "the mask is not moved")
+        assert_true(rawget(mask, "SetPoint") == nil, "the mask's SetPoint is not locked")
+        assert_eq(texCoord(mask), FULL, "the mask is not cropped")
+        assert_eq(button.icon:GetNumMaskTextures(), 1, "nothing else changed")
+    end)
+
     it("130924 as an ordinary round texture (not a mask) is still emptied", function()
         local SMB = fresh()
         local button = NewPlainButton("RoundBorderButton", { border = MASK_FILE })

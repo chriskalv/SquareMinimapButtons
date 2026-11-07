@@ -428,6 +428,7 @@ function SMB:RemoveMasks(region)
 end
 
 function SMB:HandleRegion(button, region)
+	-- SkinMinimapButton already skips masks; HandleRegion is public and keeps them out on its own.
 	if isMaskTexture(region) then return end
 	local texture = region.GetTextureFileID and region:GetTextureFileID() or region.GetTexture and region:GetTexture()
 	if not texture then return end
@@ -817,6 +818,11 @@ function SMB:CreateTrackerGlow(button)
 	Alpha:SetToAlpha(1)
 	Alpha:SetDuration(0.6)
 	Glow.Pulse = Pulse
+	-- The client may stop the animation while a parent is hidden (UI hidden, cinematic); start it
+	-- again when the glow shows, so it does not stand still at full alpha until the next event.
+	Glow:SetScript('OnShow', function(self)
+		if not self.Pulse:IsPlaying() then self.Pulse:Play() end
+	end)
 
 	Glow:Hide()
 	return Glow
@@ -834,7 +840,14 @@ function SMB:UpdateTrackerGlow()
 	if not Glow then return false end
 
 	if show then
-		if Glow:GetParent() ~= button then Glow:SetParent(button) end
+		-- The glow is a child of the button and follows it into the bar; this only matters if
+		-- MinimapCluster.Tracking.Button is replaced by another frame (for example by another addon).
+		if Glow:GetParent() ~= button then
+			Glow:SetParent(button)
+			local size = SMB.TrackerGlowSize
+			Glow:SetPoint('TOPLEFT', button, 'TOPLEFT', -size, size)
+			Glow:SetPoint('BOTTOMRIGHT', button, 'BOTTOMRIGHT', size, -size)
+		end
 		Glow:SetFrameStrata(button:GetFrameStrata())
 		Glow:SetFrameLevel(button:GetFrameLevel() + 2)
 		Glow:Show()

@@ -213,6 +213,33 @@ describe("where the glow sits", function()
         assert_true(glowShown(SMB))
     end)
 
+    it("moves to a replacement of MinimapCluster.Tracking.Button (parent and anchors)", function()
+        local SMB = fresh({ tracking = gatherer(false) })
+        local old, Glow = trackerButton(), SMB.TrackerGlow
+        assert_true(Glow:GetParent() == old)
+        local replacement = CreateFrame("Button", nil, Minimap)
+        replacement:SetSize(18, 18)
+        MinimapCluster.Tracking.Button = replacement
+        assert_true(SMB:UpdateTrackerGlow())
+        assert_true(SMB.TrackerGlow == Glow, "the same glow frame")
+        assert_true(Glow:GetParent() == replacement)
+        assert_eq(StubState(Glow).points, {
+            { "TOPLEFT", replacement, "TOPLEFT", -2, 2 },
+            { "BOTTOMRIGHT", replacement, "BOTTOMRIGHT", 2, -2 },
+        })
+        MinimapCluster.Tracking.Button = old
+    end)
+
+    it("the pulse starts again when the glow shows after the client stopped it", function()
+        local SMB = fresh({ tracking = gatherer(false) })
+        local Glow = SMB.TrackerGlow
+        assert_true(glowShown(SMB))
+        Glow:Hide()
+        Glow.Pulse:Stop() -- as the client may do while a parent is hidden
+        Glow:Show()
+        assert_true(Glow.Pulse:IsPlaying(), "OnShow plays the pulse")
+    end)
+
     it("does not catch the mouse and does not enlarge the button", function()
         local SMB = fresh({ tracking = gatherer(false) })
         AdvanceTime(7.1)
