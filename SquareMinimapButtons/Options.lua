@@ -209,7 +209,7 @@ end
 -- Tab Profiles
 --
 -- AceDBOptions:GetOptionsTable(db) returns a table per database, but its args are one table of the
--- library that every addon shares (AceDBOptions-3.0.lua: optionsTable 360-458, GetOptionsTable
+-- library that every addon shares (AceDBOptions-3.0.lua: optionsTable 360-453, GetOptionsTable
 -- 461-472 sets tbl.args = optionsTable). An addon that writes its own entries into those args shows
 -- them in the profiles of every addon that uses AceDBOptions (seen with RestedXP, README "Known
 -- limits and client checks"). The tab is therefore an own group: name, desc and handler from the library's table,
@@ -217,7 +217,9 @@ end
 -- entry. The entries are static; their get, set, values, disabled and func are method names, which
 -- AceConfig resolves against the handler of the path (the group's handler is inherited, and
 -- info.handler is that handler). AceDBOptions upgrades the handler in place (getOptionsHandler), so
--- the reference stays valid; the tab is built at login, after every copy of the library is loaded.
+-- the reference stays valid. The tab is built at login; a newer copy of the library loaded later
+-- (load on demand) upgrades the handler in place, and the tab keeps the entries of the copy that was
+-- loaded at login (same method names).
 --------------------------------------------------------------------------------
 
 -- The standard entries of AceDBOptions-3.0 revision 17 (the copy in Libs/Ace3). A test fails if
