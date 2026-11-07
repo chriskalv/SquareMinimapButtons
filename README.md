@@ -1,6 +1,6 @@
 # Square Minimap Buttons
 
-Port of the *Square Minimap Buttons* module of [ProjectAzilroka](https://github.com/Azilroka/ProjectAzilroka) by Azilroka to **WoW Forever** (Interface 16001), with Azilroka's permission. It collects the minimap buttons of other addons into a bar next to the minimap, skins them square, and moves Blizzard's mail, tracking, calendar and queue buttons into the bar.
+Port of the *Square Minimap Buttons* module of [ProjectAzilroka](https://github.com/Azilroka/ProjectAzilroka) by Azilroka to **WoW Forever** (Interface 16001). It collects the minimap buttons of other addons into a bar next to the minimap, skins them square, and moves Blizzard's mail, tracking, calendar and queue buttons into the bar.
 
 The addon itself is the folder [`SquareMinimapButtons/`](SquareMinimapButtons/); its [README](SquareMinimapButtons/README.md) describes every option, the differences from ProjectAzilroka, the known limits and the client checklist. The [CHANGELOG](SquareMinimapButtons/CHANGELOG.md) lists the changes per version.
 
