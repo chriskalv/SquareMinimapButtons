@@ -734,7 +734,8 @@ end
 -- Tracker glow (new in this port, after the owner's WeakAura "Track Herbs/Minerals/etc.")
 -- A red glow pulses around the tracker button while the character knows one of the gathering
 -- tracking abilities (SMB.TrackerGlowSpells: Find Herbs, Find Minerals, Find Treasure) and none of
--- them is active; the WeakAura loaded only with these three spells. Other tracking abilities (the
+-- them is active; the WeakAura also checked only these three spells (IsSpellKnown in its trigger), but
+-- unlike it, another active tracking ability no longer hides the glow. Other tracking abilities (the
 -- hunter's tracks, Sense Undead, Sense Demons) neither start nor end the glow: in WoW Forever only one
 -- tracking ability is active at a time, so a herbalist with Sense Undead on sees the glow.
 -- C_Minimap.GetTrackingInfo also lists the townsfolk and quest filters of the tracking menu
