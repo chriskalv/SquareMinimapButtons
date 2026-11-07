@@ -1,6 +1,6 @@
 # Square Minimap Buttons
 
-Port of the *Square Minimap Buttons* module of [ProjectAzilroka](https://github.com/Azilroka/ProjectAzilroka) by Azilroka to **WoW Forever** (Interface 16001), as a standalone addon, with Azilroka's permission. It collects the minimap buttons of other addons into a bar and skins them square, like the original module.
+Port of the *Square Minimap Buttons* module of [ProjectAzilroka](https://github.com/Azilroka/ProjectAzilroka) by Azilroka to **WoW Forever** (Interface 16001), as a standalone addon. It collects the minimap buttons of other addons into a bar and skins them square, like the original module.
 
 > **Version 1.0.1.** On GitHub since 1.0.0 (2026-11-07, [Releases](https://github.com/chriskalv/SquareMinimapButtons/releases)); the checks in the WoW Forever client listed below continue (see [Known limits and client checks](#known-limits-and-client-checks)). Changes per version are in [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -225,7 +225,7 @@ Checks in the WoW Forever client, once with ElvUI and once without:
 - **Zippy**: port to WoW Forever.
 - **Ace3** (WoWUIDev/Ace3): addon framework, embedded unmodified (commit `ac3d122`).
 
-The code is ported from ProjectAzilroka's module `Modules/SquareMinimapButtons.lua`, the helpers of its core and the option labels of its locales. Zippy reports that Azilroka personally allowed the port of this part of ProjectAzilroka to WoW Forever (reported on 2026-11-05); the written record of the permission will be added to `LICENSE.txt`. The addon keeps Azilroka's name for the module and the ProjectAzilroka copyright notice.
+The code is ported from ProjectAzilroka's module `Modules/SquareMinimapButtons.lua`, the helpers of its core and the option labels of its locales. Azilroka agreed to the port of this part of ProjectAzilroka to WoW Forever (2026-11-05); see `LICENSE.txt`. The addon keeps Azilroka's name for the module and the ProjectAzilroka copyright notice.
 
-- Parts taken from ProjectAzilroka: ProjectAzilroka License (copyright notice kept), used with Azilroka's permission; the license text and the notes on the port are in `LICENSE.txt`.
+- Parts taken from ProjectAzilroka: ProjectAzilroka License (copyright notice kept); the license text and the notes on the port are in `LICENSE.txt`.
 - Ace3: BSD license of the Ace3 Development Team, see `Libs/Ace3/LICENSE.txt`.

@@ -33,13 +33,11 @@ contain such parts say "Ported from ProjectAzilroka (Azilroka), see
 LICENSE.txt" in their header. Copyright of these parts stays with their
 authors (Azilroka, with Sinaris, Omega and Durc as authors of the module).
 
-Permission: Zippy reports that Azilroka personally allowed the port of the
-Square Minimap Buttons part of ProjectAzilroka to WoW Forever (reported on
-2026-11-05). The exact wording will be added here together with the written
-record of that permission. The port is distributed only on the basis of this
-permission and only for WoW Forever. It has its own folder and name
-(SquareMinimapButtons, Azilroka's name for the module); ProjectAzilroka
-itself is not renamed or modified.
+Azilroka agreed to this port of the Square Minimap Buttons part of
+ProjectAzilroka to WoW Forever (2026-11-05) and asked for no further
+notice of it. The port is distributed only for WoW Forever. It has its own
+folder and name (SquareMinimapButtons, Azilroka's name for the module);
+ProjectAzilroka itself is not renamed or modified.
 
 What is taken and what is changed: the module is ported to a standalone addon
 with its own core, client detection for WoW Forever, a different default
