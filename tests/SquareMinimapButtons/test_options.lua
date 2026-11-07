@@ -5,7 +5,9 @@
 -- the tracker glow toggle, hidden per client with WoW Forever, the reload dialog when a built
 -- Blizzard button is turned off, MoveQueue disabled while ElvUI's queue module holds the button,
 -- Blizzard buttons in combat after combat, Blizzard settings and ElvUI's options, and a layout model
--- of AceConfigDialog/AceGUI that checks that the tabs General and Blizzard fit into the dialog.
+-- of AceConfigDialog/AceGUI that checks that the tabs General, Blizzard and Profiles fit; part 2
+-- of nachtrag 2: the tab Profiles is an own group with only the standard entries of AceDBOptions
+-- (entries that other addons write into the library's shared args stay out).
 
 local FOREVER, RETAIL, CLASSIC = 18, 1, 2
 local APP = "SquareMinimapButtons"
@@ -287,10 +289,9 @@ describe("structure (nachtrag 2: three tabs)", function()
         assert_nil(SMB.PointValues)
     end)
 
-    it("profiles: the AceDBOptions group of the addon's database as the third tab", function()
+    it("profiles: an own group with the handler of the addon's database as the third tab", function()
         local SMB = fresh()
         local p = options().args.profiles
-        assert_true(p == LibStub("AceDBOptions-3.0"):GetOptionsTable(SMB.data), "AceDBOptions table")
         assert_eq(p.type, "group")
         assert_eq(p.order, 3)
         assert_eq(p.handler.db, SMB.data)
@@ -309,6 +310,167 @@ describe("structure (nachtrag 2: three tabs)", function()
         assert_eq(o.args.Blizzard.args.TrackerGlow.name, "Tracker-Symbol leuchtet, wenn nichts verfolgt wird")
         assert_contains(o.args.Blizzard.args.TrackerGlow.desc, "Greift nur, wenn der Charakter etwas verfolgen kann.")
         assert_eq(o.args.profiles.name, "Profile")
+    end)
+end)
+
+-- The standard entries of AceDBOptions-3.0 revision 17 (Libs/Ace3), sorted.
+local PROFILE_KEYS = { "choose", "choosedesc", "copydesc", "copyfrom", "current", "deldesc", "delete", "desc", "descreset", "new", "reset" }
+
+-- The entries that RestedXP writes into the args of its AceDBOptions table (RXPGuides
+-- SettingsPanel.lua 3583-3618), reduced to what the test needs.
+local function addForeignEntries(args)
+    args.reloadUI = { order = 0, name = "Reload guides and UI", type = "execute", func = function() end }
+    args.setDefaultProfile = { order = 910, name = "Set current profile as default", type = "execute", func = function() end }
+end
+
+local function removeForeignEntries(args)
+    args.reloadUI, args.setDefaultProfile = nil, nil
+end
+
+describe("tab Profiles (nachtrag 2 part 2: only the standard entries of AceDBOptions)", function()
+    it("is not the library's table; the same handler; exactly the eleven standard entries, each the library's own", function()
+        local SMB = fresh()
+        local ADBO = LibStub("AceDBOptions-3.0")
+        local library = ADBO:GetOptionsTable(SMB.data)
+        local p = options().args.profiles
+        assert_true(p ~= library, "an own group, not AceDBOptions' table")
+        assert_true(p.args ~= library.args, "own args, not the library's shared args")
+        assert_true(p.handler == library.handler, "the handler of the library's table")
+        assert_true(p.handler == ADBO.handlers[SMB.data], "AceDBOptions' handler of this database")
+        assert_eq(keysOf(p.args), PROFILE_KEYS)
+        for _, key in ipairs(PROFILE_KEYS) do
+            assert_true(p.args[key] ~= nil and p.args[key] == library.args[key], key .. " is the library's entry")
+        end
+        assert_eq({ p.name, p.desc }, { library.name, library.desc }, "name and desc of the library (localized)")
+        assert_eq(p.name, "Profiles")
+        assert_nil(p.childGroups)
+    end)
+
+    it("the constant lists the same keys", function()
+        local SMB = fresh()
+        local constant = {}
+        for i, key in ipairs(SMB.ProfileOptionKeys) do constant[i] = key end
+        table.sort(constant)
+        assert_eq(constant, PROFILE_KEYS)
+    end)
+
+    it("entries of another addon in the library's args (as RestedXP writes them) stay out of the tab", function()
+        -- ReloadAddon loads LibStub and every library again (ResetWorld removes the globals that did
+        -- not exist before the first load), so the entries cannot leak into the next test; they are
+        -- removed at the end all the same.
+        ReloadAddon({})
+        local ADBO = LibStub("AceDBOptions-3.0")
+        -- another addon's database and its table, before this addon builds its options (login)
+        local other = LibStub("AceDB-3.0"):New("OtherAddonTestDB", nil, true)
+        local shared = ADBO:GetOptionsTable(other).args
+        addForeignEntries(shared)
+        StartClient()
+        local SMB = GetAddon()
+        local library = ADBO:GetOptionsTable(SMB.data)
+        assert_true(library.args == shared, "AceDBOptions shares one args table between all databases")
+        assert_true(library.args.reloadUI ~= nil and library.args.setDefaultProfile ~= nil, "the library's table has them")
+        local p = options().args.profiles
+        assert_nil(p.args.reloadUI, "no Reload guides and UI")
+        assert_nil(p.args.setDefaultProfile, "no Set current profile as default")
+        assert_eq(keysOf(p.args), PROFILE_KEYS)
+        -- entries written after the build stay out as well
+        shared.resetGuideProgress = { order = 0.1, name = "Reset Guide Progress", type = "execute", func = function() end }
+        assert_nil(options().args.profiles.args.resetGuideProgress)
+        assert_eq(keysOf(options().args.profiles.args), PROFILE_KEYS)
+        removeForeignEntries(shared)
+        shared.resetGuideProgress = nil
+        assert_eq(STUB.errors, {})
+    end)
+
+    it("each ReloadAddon loads a fresh AceDBOptions (the foreign entries of a test do not carry over)", function()
+        ReloadAddon({})
+        local before = LibStub("AceDBOptions-3.0")
+        local other = LibStub("AceDB-3.0"):New("OtherAddonTestDB", nil, true)
+        addForeignEntries(before:GetOptionsTable(other).args)
+        local SMB = fresh()
+        local after = LibStub("AceDBOptions-3.0")
+        assert_true(after ~= before, "a new library table")
+        assert_nil(after:GetOptionsTable(SMB.data).args.reloadUI)
+        removeForeignEntries(before:GetOptionsTable(other).args)
+    end)
+
+    it("maintenance guard: every entry of the shipped AceDBOptions is in the constant", function()
+        local SMB = fresh()
+        local ADBO, minor = LibStub("AceDBOptions-3.0")
+        local listed = {}
+        for _, key in ipairs(SMB.ProfileOptionKeys) do listed[key] = true end
+        for key in pairs(ADBO:GetOptionsTable(SMB.data).args) do
+            assert_true(listed[key], string.format("AceDBOptions-3.0 revision %s has the entry %s, add it to SMB.ProfileOptionKeys", tostring(minor), key))
+        end
+    end)
+
+    it("the handler methods are resolved through the group (real AceConfigCmd): choose, copy, reset", function()
+        local config = withProfile({})
+        config.savedVariables.profiles.Other = { IconSize = 40 }
+        local SMB = fresh(config)
+        local apply = spy(SMB, "ApplySettings")
+        local cmd = LibStub("AceConfigCmd-3.0")
+        cmd:HandleCommand("smbtest", APP, "profiles choose Other")
+        assert_eq(SMB.data:GetCurrentProfile(), "Other")
+        assert_eq(SMB.db.IconSize, 40)
+        cmd:HandleCommand("smbtest", APP, "profiles choose Default")
+        cmd:HandleCommand("smbtest", APP, "profiles copyfrom Other")
+        assert_eq(SMB.db.IconSize, 40, "copied")
+        cmd:HandleCommand("smbtest", APP, "profiles reset")
+        assert_eq(SMB.db.IconSize, 18, "reset")
+        assert_eq(apply.n, 4, "every change rebuilds")
+        assert_eq(STUB.errors, {})
+    end)
+
+    it("the name function of current gets the handler of the group as info.handler", function()
+        local SMB = fresh()
+        -- the handler as AceConfigDialog's GetOptionsMemberValue picks it up (AceConfigDialog-3.0.lua
+        -- 191-205): the nearest handler on the way from the root to the option
+        local root = options()
+        local handler, group = root.handler, root
+        for _, key in ipairs({ "profiles", "current" }) do
+            group = group.args[key]
+            handler = group.handler or handler
+        end
+        assert_true(handler == LibStub("AceDBOptions-3.0").handlers[SMB.data], "inherited from the tab")
+        local text = group.name({ "profiles", "current", handler = handler })
+        assert_eq(text, "Current Profile: |cffffd200Default|r")
+    end)
+
+    it("passes the validation with the own tab in Forever, Retail, Classic, with ElvUI and in German", function()
+        local configs = {
+            { projectID = FOREVER }, { projectID = RETAIL }, { projectID = CLASSIC },
+            { elvui = { options = { loaded = true } } }, { locale = "deDE" },
+        }
+        for i, config in ipairs(configs) do
+            local SMB = fresh(config)
+            local registry = LibStub("AceConfigRegistry-3.0")
+            local ok, err = pcall(registry.ValidateOptionsTable, registry, SMB.Options, APP)
+            assert_true(ok, "config " .. i .. ": " .. tostring(err))
+            assert_eq(keysOf(SMB.Options.args.profiles.args), PROFILE_KEYS, "config " .. i)
+            assert_true(SMB.Options.args.profiles ~= LibStub("AceDBOptions-3.0"):GetOptionsTable(SMB.data), "config " .. i)
+            if config.elvui then
+                assert_nil(ElvUI[1].Options.args.SquareMinimapButtons.args.profiles, "ElvUI without the profiles")
+            end
+        end
+        fresh({ locale = "deDE" })
+        assert_eq(options().args.profiles.name, "Profile", "AceDBOptions' German name")
+    end)
+
+    it("the game settings category shows the same root, with this tab", function()
+        local SMB = fresh()
+        local dialog = LibStub("AceConfigDialog-3.0")
+        local group = dialog.BlizOptions[APP] and dialog.BlizOptions[APP][APP]
+        assert_true(group ~= nil, "AddToBlizOptions built its panel")
+        assert_eq(group:GetUserData("appName"), APP)
+        assert_nil(group:GetUserData("path"), "the root, no sub path")
+        group:Fire("OnShow") -- FeedToBlizPanel opens the app in the panel
+        assert_eq(#STUB.settings.dialogOpened, 1)
+        assert_eq(STUB.settings.dialogOpened[1][1], APP)
+        local root = LibStub("AceConfigRegistry-3.0"):GetOptionsTable(APP)("dialog", "AceConfigDialog-3.0")
+        assert_true(root == SMB.Options, "the same root")
+        assert_true(root.args.profiles ~= LibStub("AceDBOptions-3.0"):GetOptionsTable(SMB.data), "this tab, not the library's table")
+        assert_eq(keysOf(root.args.profiles.args), PROFILE_KEYS)
     end)
 end)
 
@@ -548,11 +710,12 @@ end)
 --   Flow layout (AceGUI-3.0.lua): rows packed left to right, 3 between rows and after the last;
 --     a control offsets by its alignoffset (or half its height) when it shares a row
 --   CheckBox 24 (no inline description), Slider 44 (alignoffset 25), Dropdown with label 40
---     (alignoffset 26), Heading 18, Label = string height (at least 1)
---   AceConfigDialog: width_multiplier 170 for controls without width, "full" and descriptions and
---     headers fill the row
+--     (alignoffset 26), Button 24, EditBox with label 44 (alignoffset 30), Heading 18, Label =
+--     string height (at least 1)
+--   AceConfigDialog: width_multiplier 170 for controls without width (numbers multiply it),
+--     "full", headers and descriptions without width fill the row
 -- The font heights of the labels are estimated generously: small 12, medium 14, large 18 per line,
--- a line holds width / (0.6 * font size) characters.
+-- a line holds width / (0.6 * font size) characters, and every line break starts a new line.
 local FONT = { small = { 10, 12 }, medium = { 12, 14 }, large = { 16, 18 } }
 local WIDTH_MULTIPLIER = 170
 
@@ -564,13 +727,26 @@ end
 local function labelHeight(text, fontSize, width)
     local font = FONT[fontSize] or FONT.small
     local perLine = math.max(1, math.floor(width / (0.6 * font[1])))
-    local lines = math.max(1, math.ceil(#(text or "") / perLine))
+    local lines = 0
+    for part in ((text or "") .. "\n"):gmatch("([^\n]*)\n") do -- every "\n" starts a line
+        lines = lines + math.max(1, math.ceil(#part / perLine))
+    end
     return lines * font[2]
 end
 
+-- the width of a control that does not fill the row (AceConfigDialog "Common Init")
+local function controlWidth(width)
+    if width == "double" then return WIDTH_MULTIPLIER * 2
+    elseif width == "half" then return WIDTH_MULTIPLIER / 2
+    elseif type(width) == "number" then return WIDTH_MULTIPLIER * width end
+    return WIDTH_MULTIPLIER
+end
+
 -- flow layout of the visible options of a group; returns the height and a list of
--- { key, bottom } with the bottom edge of every control (relative to the top of the content)
-local function flowGroup(group, width, path, top, bottoms)
+-- { key, bottom } with the bottom edge of every control (relative to the top of the content);
+-- handler: the handler inherited from the groups above (AceConfig passes it as info.handler)
+local function flowGroup(group, width, path, top, bottoms, handler)
+    handler = group.handler or handler
     local keys = {}
     for key, option in pairs(group.args) do keys[#keys + 1] = key end
     table.sort(keys, function(a, b)
@@ -589,28 +765,31 @@ local function flowGroup(group, width, path, top, bottoms)
         local info = {}
         for i, k in ipairs(path) do info[i] = k end
         info[#info + 1] = key
+        info.handler = handler
         if not textOf(option.hidden, info) then
             local fh, fw, fo, fill
             if option.type == "group" then
                 fill = true
                 fw = width
                 local inner = {}
-                local innerHeight = flowGroup(option, width - 20, info, top + height + 10, inner)
+                local innerHeight = flowGroup(option, width - 20, info, top + height + 10, inner, handler)
                 fh = innerHeight + 40
                 for _, b in ipairs(inner) do bottoms[#bottoms + 1] = b end
-            elseif option.type == "description" then
+            elseif option.type == "description" and not option.width then
                 fill = true
                 fw = width
                 fh = labelHeight(textOf(option.name, info), option.fontSize, width)
             elseif option.type == "header" then
                 fill, fw, fh = true, width, 18
             else
-                if option.type == "toggle" then fh = 24
+                fill = option.width == "full"
+                fw = fill and width or controlWidth(option.width)
+                if option.type == "toggle" or option.type == "execute" then fh = 24
                 elseif option.type == "range" then fh, fo = 44, 25
                 elseif option.type == "select" then fh, fo = 40, 26
+                elseif option.type == "input" then fh, fo = 44, 30
+                elseif option.type == "description" then fh = labelHeight(textOf(option.name, info), option.fontSize, fw)
                 else error("no height for type " .. tostring(option.type)) end
-                fill = option.width == "full"
-                fw = fill and width or WIDTH_MULTIPLIER
             end
             fo = fo or fh / 2
             if first then
@@ -670,6 +849,24 @@ describe("layout of the dialog (nachtrag 2: nothing reaches past the frame)", fu
         assert_eq({ general, blizzard, available, width }, { 299, 135, 450, 546 })
         fresh({ projectID = RETAIL })
         assert_eq((measureTab("Blizzard", SMB.DialogWidth, SMB.DialogHeight)), 162, "Retail: six toggles")
+    end)
+
+    it("Profiles: only the eleven standard entries count; 374 of 450, also with another addon's entries", function()
+        for _, c in ipairs(configs) do
+            local SMB = fresh(c.config)
+            local needed, available, _, bottoms = measureTab("profiles", SMB.DialogWidth, SMB.DialogHeight)
+            assert_eq({ needed, available, #bottoms }, { 374, 450, 11 }, c.name)
+        end
+        -- the entries of RestedXP in the library's args would add rows; the tab does not show them
+        ReloadAddon({})
+        local other = LibStub("AceDB-3.0"):New("OtherAddonTestDB", nil, true)
+        local shared = LibStub("AceDBOptions-3.0"):GetOptionsTable(other).args
+        addForeignEntries(shared)
+        StartClient()
+        local SMB = GetAddon()
+        local needed, _, _, bottoms = measureTab("profiles", SMB.DialogWidth, SMB.DialogHeight)
+        assert_eq({ needed, #bottoms }, { 374, 11 })
+        removeForeignEntries(shared)
     end)
 
     it("three controls of 170 fit in a row of the tab and of the inline group MBB", function()

@@ -1,6 +1,7 @@
 -- Test group 8 (part for package 1): default profile, MoveQueue per client, profile callbacks,
 -- "/smb reset", saved variables file; since nachtrag 2 the shared profile "Default" (AceDB:New with
--- defaultProfile true) and the one-time switch of characters on their own profile.
+-- defaultProfile true) and the one-time switch of characters on their own profile, which takes
+-- their values over while Default is untouched (part 2 of nachtrag 2).
 
 local EXPECTED_FOREVER = {
     Enable = true,
@@ -172,45 +173,101 @@ describe("saved variables", function()
 end)
 
 describe("one-time switch to Default for characters of the first test versions", function()
-    local function oldFile()
+    -- the saved variables of a character that an earlier test version put on its own profile
+    local function oldFile(values, default)
         return {
             profileKeys = { ["Zippy - Forever"] = "Zippy - Forever" },
-            profiles = { ["Zippy - Forever"] = { IconSize = 30 } },
+            profiles = { ["Zippy - Forever"] = values or { IconSize = 24, Shadows = false }, Default = default },
         }
     end
 
-    it("a character on its own profile moves to Default once; the old profile stays and can be copied", function()
-        local SMB = started({ savedVariables = oldFile() })
-        assert_eq(SMB.data:GetCurrentProfile(), "Default")
-        assert_eq(SMB.db.IconSize, 18, "Default starts with the defaults")
-        assert_true(SMB.data.char.SharedProfileMigrated, "marker in the character section")
+    local function sortedProfiles(SMB)
         local profiles = SMB.data:GetProfiles()
         table.sort(profiles)
-        assert_eq(profiles, { "Default", "Zippy - Forever" }, "the old profile is still there")
-        SMB.data:CopyProfile("Zippy - Forever")
-        assert_eq(SMB.db.IconSize, 30, "Profiles > Copy From takes the old settings over")
+        return profiles
+    end
+
+    it("own profile with values, Default untouched: switches to Default and takes the values over", function()
+        local SMB = started({ savedVariables = oldFile() })
+        assert_eq(SMB.data:GetCurrentProfile(), "Default")
+        assert_eq({ SMB.db.IconSize, SMB.db.Shadows }, { 24, false }, "the old settings")
+        assert_eq(SMB.db.ButtonsPerRow, 1, "the rest from the defaults")
+        assert_true(SMB.db == SMB.data.profile, "db is the profile Default")
+        assert_true(SMB.data.char.SharedProfileMigrated, "marker in the character section")
+        assert_eq(sortedProfiles(SMB), { "Default", "Zippy - Forever" }, "the old profile is still there")
+        assert_eq(SquareMinimapButtonsDB.profileKeys["Zippy - Forever"], "Default")
+        assert_eq(ChatContains("Square Minimap Buttons:|r this character now uses the shared profile Default (settings copied from Zippy - Forever)"), 1)
         assert_eq(STUB.errors, {})
+    end)
+
+    it("an empty Default table counts as untouched (AceDB stores only values that differ from the defaults)", function()
+        local SMB = started({ savedVariables = oldFile(nil, {}) })
+        assert_eq(SMB.data:GetCurrentProfile(), "Default")
+        assert_eq({ SMB.db.IconSize, SMB.db.Shadows }, { 24, false })
+    end)
+
+    it("Default has values already (another character was first): switches without copying", function()
+        local SMB = started({ savedVariables = oldFile({ IconSize = 24, Shadows = false }, { IconSize = 30 }) })
+        assert_eq(SMB.data:GetCurrentProfile(), "Default")
+        assert_eq({ SMB.db.IconSize, SMB.db.Shadows }, { 30, true }, "the values of Default, nothing copied")
+        assert_eq(sortedProfiles(SMB), { "Default", "Zippy - Forever" })
+        SMB.data:CopyProfile("Zippy - Forever")
+        assert_eq({ SMB.db.IconSize, SMB.db.Shadows }, { 24, false }, "Profiles > Copy From still takes the old settings over")
+        assert_eq(ChatContains("this character now uses the shared profile Default"), 1)
+        assert_eq(ChatContains("settings copied"), 0)
+    end)
+
+    it("own profile without values: switches without copying and without errors", function()
+        for _, values in ipairs({ {}, false }) do
+            local file = oldFile(values or nil)
+            if values == false then file.profiles["Zippy - Forever"] = nil end
+            local SMB = started({ savedVariables = file })
+            assert_eq(SMB.data:GetCurrentProfile(), "Default")
+            assert_eq(profileValues(SMB.db), EXPECTED_FOREVER)
+            assert_eq(STUB.errors, {})
+            assert_eq(ChatContains("this character now uses the shared profile Default"), 1)
+            assert_eq(ChatContains("settings copied"), 0)
+        end
+    end)
+
+    it("MigrateToSharedProfile returns switched and copied", function()
+        ReloadAddon({})
+        local SMB = GetAddon()
+        local AceDB = LibStub("AceDB-3.0")
+        SquareMinimapButtonsDB = oldFile()
+        assert_eq({ SMB:MigrateToSharedProfile(AceDB:New("SquareMinimapButtonsDB", SMB.Defaults, true)) }, { true, true })
+        SquareMinimapButtonsDB = oldFile(nil, { IconSize = 30 })
+        assert_eq({ SMB:MigrateToSharedProfile(AceDB:New("SquareMinimapButtonsDB", SMB.Defaults, true)) }, { true, false })
+        SquareMinimapButtonsDB = oldFile({})
+        assert_eq({ SMB:MigrateToSharedProfile(AceDB:New("SquareMinimapButtonsDB", SMB.Defaults, true)) }, { true, false })
+        local data = AceDB:New("SquareMinimapButtonsDB", SMB.Defaults, true)
+        assert_eq({ SMB:MigrateToSharedProfile(data) }, { false, false }, "marker set")
+        assert_eq({ SMB:MigrateToSharedProfile(nil) }, { false, false })
     end)
 
     it("happens only once: a character that chooses its own profile again keeps it", function()
         local SMB = started({ savedVariables = oldFile() })
         SMB.data:SetProfile("Zippy - Forever")
+        SMB.db.IconSize = 26
         local saved = SquareMinimapButtonsDB
         SMB = started({ savedVariables = saved })
         assert_eq(SMB.data:GetCurrentProfile(), "Zippy - Forever")
-        assert_eq(SMB.db.IconSize, 30)
+        assert_eq(SMB.db.IconSize, 26)
+        assert_eq(ChatContains("shared profile"), 0, "no second message")
     end)
 
-    it("a character on another chosen profile is left alone", function()
+    it("a character on another chosen profile (Foo) is left alone", function()
         local SMB = started({
             savedVariables = {
-                profileKeys = { ["Zippy - Forever"] = "Raid" },
-                profiles = { Raid = { IconSize = 40 } },
+                profileKeys = { ["Zippy - Forever"] = "Foo" },
+                profiles = { Foo = { IconSize = 40 }, ["Zippy - Forever"] = { IconSize = 24 } },
             },
         })
-        assert_eq(SMB.data:GetCurrentProfile(), "Raid")
+        assert_eq(SMB.data:GetCurrentProfile(), "Foo")
         assert_eq(SMB.db.IconSize, 40)
         assert_true(SMB.data.char.SharedProfileMigrated)
+        assert_nil(rawget(SquareMinimapButtonsDB.profiles, "Default"), "Default not created")
+        assert_eq(ChatContains("shared profile"), 0)
     end)
 
     it("the switch runs before the callbacks: no rebuild at load", function()
@@ -222,6 +279,20 @@ describe("one-time switch to Default for characters of the first test versions",
         StartClient()
         assert_eq(applied, 0)
         assert_eq(SMB.data:GetCurrentProfile(), "Default")
+        assert_eq(SMB.db.IconSize, 24, "the copied value is read once after the switch")
+        assert_true(SMB.Bar ~= nil, "the bar is built after the switch")
+    end)
+
+    it("the message is printed once at login, also while the guard blocks the addon", function()
+        local SMB = started({ savedVariables = oldFile(), pa = { enabled = true } })
+        assert_true(SMB.blocked)
+        assert_eq(SMB.data:GetCurrentProfile(), "Default")
+        assert_eq(ChatContains("this character now uses the shared profile Default (settings copied from Zippy - Forever)"), 1)
+    end)
+
+    it("German message", function()
+        started({ savedVariables = oldFile(), locale = "deDE" })
+        assert_eq(ChatContains("dieser Charakter nutzt jetzt das gemeinsame Profil Default (Einstellungen übernommen aus Zippy - Forever)"), 1)
     end)
 end)
 

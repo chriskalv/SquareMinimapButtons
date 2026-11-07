@@ -20,7 +20,7 @@ local addonName, ns = ...
 local _G = _G
 local LibStub = _G.LibStub
 
-local type, pairs, ipairs, select, format, tostring = type, pairs, ipairs, select, format, tostring
+local type, pairs, ipairs, select, format, tostring, next, rawget = type, pairs, ipairs, select, format, tostring, next, rawget
 local strlower, strtrim = strlower, strtrim
 
 local SMB = LibStub('AceAddon-3.0'):NewAddon('SquareMinimapButtons', 'AceEvent-3.0', 'AceHook-3.0', 'AceTimer-3.0', 'AceConsole-3.0')
@@ -232,17 +232,41 @@ end
 -- keeps the profile a character already uses, so a character that the first test versions put on
 -- its own profile ("Name - Realm", AceDB's choice without a default profile) would never reach
 -- "Default". Once per character (marker in the character section of the saved variables), such a
--- character is switched to "Default"; its old profile stays and can be copied (Profiles, Copy
--- From). A character that chose another profile is left alone, and so is every later choice.
+-- character is switched to "Default". If "Default" is still untouched (AceDB stores only values that
+-- differ from the defaults, so an untouched profile is missing or empty) and the old profile has
+-- stored values, they are copied over (AceDB CopyProfile), so the first character keeps its
+-- settings and shares them from now on. If "Default" has values already (another character was
+-- first), nothing is copied; the old profile stays and can be copied by hand (Profiles, Copy From).
+-- A character that chose another profile is left alone, and so is every later choice.
+-- Returns switched, copied.
 SMB.SharedProfileName = 'Default'
 
+local function hasValues(profile)
+	return type(profile) == 'table' and next(profile) ~= nil
+end
+
 function SMB:MigrateToSharedProfile(data)
-	if type(data) ~= 'table' or type(data.char) ~= 'table' or type(data.keys) ~= 'table' then return false end
-	if data.char.SharedProfileMigrated then return false end
+	if type(data) ~= 'table' or type(data.char) ~= 'table' or type(data.keys) ~= 'table' then return false, false end
+	if data.char.SharedProfileMigrated then return false, false end
 	data.char.SharedProfileMigrated = true
-	if data.keys.profile ~= data.keys.char then return false end
+	local old = data.keys.char
+	if data.keys.profile ~= old then return false, false end
+
+	local profiles = data.profiles -- AceDB creates the container if the file has none
+	local copy = not hasValues(rawget(profiles, SMB.SharedProfileName)) and hasValues(rawget(profiles, old))
 	data:SetProfile(SMB.SharedProfileName)
-	return true
+	if copy then
+		data:CopyProfile(old)
+	end
+	return true, copy
+end
+
+-- The chat line for the switch (printed at login, see OnEnable).
+function SMB:SharedProfileMessage(copied, oldName)
+	if copied then
+		return format(L['this character now uses the shared profile %s (settings copied from %s)'], SMB.SharedProfileName, tostring(oldName))
+	end
+	return format(L['this character now uses the shared profile %s'], SMB.SharedProfileName)
 end
 
 -- Builds the Blizzard buttons after an option or profile change. In combat this waits for
@@ -397,7 +421,12 @@ end
 function SMB:OnInitialize()
 	-- true: the shared profile "Default" instead of one profile per character
 	self.data = LibStub('AceDB-3.0'):New('SquareMinimapButtonsDB', self.Defaults, true)
-	self:MigrateToSharedProfile(self.data) -- before the callbacks: nothing is built yet
+	-- before the callbacks: nothing is built yet, self.db is read below
+	local oldName = self.data.keys and self.data.keys.char
+	local switched, copied = self:MigrateToSharedProfile(self.data)
+	if switched then
+		self.sharedProfileMessage = self:SharedProfileMessage(copied, oldName)
+	end
 	self.db = self.data.profile
 
 	self.data.RegisterCallback(self, 'OnProfileChanged', 'ApplySettings')
@@ -412,6 +441,11 @@ end
 -- OnEnable runs at PLAYER_LOGIN. If ProjectAzilroka is loaded but has not set its profile yet, decide
 -- on the next frame, after its own PLAYER_LOGIN handler.
 function SMB:OnEnable()
+	-- the one-time switch to "Default" (OnInitialize) is told once, also while the guard blocks
+	if self.sharedProfileMessage then
+		self:Message(self.sharedProfileMessage)
+		self.sharedProfileMessage = nil
+	end
 	if self:IsProjectAzilrokaActive() == nil and _G.C_Timer and _G.C_Timer.After then
 		_G.C_Timer.After(0, function() SMB:Start() end)
 	else

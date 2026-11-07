@@ -53,3 +53,7 @@ L['/smb reset: reset the current profile to the defaults'] = true
 L['The options are not available yet.'] = true
 L['Scanning is not available yet.'] = true
 L['The current profile was reset to the defaults.'] = true
+
+-- WoW Forever port: one-time switch to the shared profile (chat, %s: profile names)
+L['this character now uses the shared profile %s'] = true
+L['this character now uses the shared profile %s (settings copied from %s)'] = true

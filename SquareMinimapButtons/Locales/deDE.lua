@@ -54,3 +54,7 @@ L['/smb reset: reset the current profile to the defaults'] = '/smb reset: aktuel
 L['The options are not available yet.'] = 'Die Optionen sind noch nicht verfügbar.'
 L['Scanning is not available yet.'] = 'Die Suche nach Knöpfen ist noch nicht verfügbar.'
 L['The current profile was reset to the defaults.'] = 'Das aktuelle Profil wurde auf die Standardwerte zurückgesetzt.'
+
+-- WoW Forever port: one-time switch to the shared profile (chat, %s: profile names)
+L['this character now uses the shared profile %s'] = 'dieser Charakter nutzt jetzt das gemeinsame Profil %s'
+L['this character now uses the shared profile %s (settings copied from %s)'] = 'dieser Charakter nutzt jetzt das gemeinsame Profil %s (Einstellungen übernommen aus %s)'

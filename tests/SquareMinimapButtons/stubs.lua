@@ -1033,6 +1033,7 @@ local function installClientState(config)
     LOCALIZED_CLASS_NAMES_FEMALE = {}
 
     ACCEPT, CANCEL, OKAY, YES, NO, CLOSE = "Accept", "Cancel", "Okay", "Yes", "No", "Close"
+    NORMAL_FONT_COLOR_CODE, FONT_COLOR_CODE_CLOSE = "|cffffd200", "|r" -- used by AceDBOptions (current profile)
     NORMAL_FONT_COLOR = { r = 1, g = 0.82, b = 0 }
     HIGHLIGHT_FONT_COLOR = { r = 1, g = 1, b = 1 }
     GameFontNormal, GameFontHighlight, GameFontHighlightSmall, GameFontNormalSmall = {}, {}, {}, {}

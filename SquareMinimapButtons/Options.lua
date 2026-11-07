@@ -35,7 +35,7 @@ local SMB, L = ns.SMB, ns.L
 
 local _G = _G
 local LibStub = _G.LibStub
-local type, pairs = type, pairs
+local type, pairs, ipairs = type, pairs, ipairs
 
 SMB.OptionsName = 'SquareMinimapButtons' -- the AceConfig app name (Core.lua opens it under SMB.AddonName)
 
@@ -194,15 +194,54 @@ function SMB:GetOptions()
 		hidden = function() return SMB.IsClassic end,
 	}
 
-	-- Tab Profiles (ProjectAzilroka Init.lua: AceDBOptions as a group of its options)
-	local ADBO = LibStub('AceDBOptions-3.0', true)
-	if ADBO and SMB.data then
-		local profiles = ADBO:GetOptionsTable(SMB.data)
+	-- Tab Profiles (ProjectAzilroka Init.lua: AceDBOptions as a group of its options), as an own
+	-- group with only the standard entries (see SMB:GetProfilesOptions)
+	local profiles = SMB:GetProfilesOptions()
+	if profiles then
 		profiles.order = 3
 		Options.args.profiles = profiles
 	end
 
 	return Options
+end
+
+--------------------------------------------------------------------------------
+-- Tab Profiles
+--
+-- AceDBOptions:GetOptionsTable(db) returns a table per database, but its args are one table of the
+-- library that every addon shares (AceDBOptions-3.0.lua: optionsTable 360-458, GetOptionsTable
+-- 461-472 sets tbl.args = optionsTable). An addon that writes its own entries into those args shows
+-- them in the profiles of every addon that uses AceDBOptions (seen with RestedXP, README "Known
+-- limits and client checks"). The tab is therefore an own group: name, desc and handler from the library's table,
+-- and an own args table with only the standard entries of the library, each one the library's own
+-- entry. The entries are static; their get, set, values, disabled and func are method names, which
+-- AceConfig resolves against the handler of the path (the group's handler is inherited, and
+-- info.handler is that handler). AceDBOptions upgrades the handler in place (getOptionsHandler), so
+-- the reference stays valid; the tab is built at login, after every copy of the library is loaded.
+--------------------------------------------------------------------------------
+
+-- The standard entries of AceDBOptions-3.0 revision 17 (the copy in Libs/Ace3). A test fails if
+-- the library has an entry that is missing here.
+SMB.ProfileOptionKeys = {
+	'desc', 'descreset', 'reset', 'current', 'choosedesc', 'new', 'choose',
+	'copydesc', 'copyfrom', 'deldesc', 'delete',
+}
+
+function SMB:GetProfilesOptions()
+	local ADBO = LibStub('AceDBOptions-3.0', true)
+	if not (ADBO and SMB.data) then return nil end
+	local library = ADBO:GetOptionsTable(SMB.data)
+	local args = {}
+	for _, key in ipairs(SMB.ProfileOptionKeys) do
+		args[key] = library.args[key]
+	end
+	return {
+		type = 'group',
+		name = library.name,
+		desc = library.desc,
+		handler = library.handler,
+		args = args,
+	}
 end
 
 --------------------------------------------------------------------------------
@@ -253,9 +292,9 @@ end
 -- Size of the own dialog (AceGUI Frame): its content is 34 narrower and 57 lower than the frame,
 -- the TabGroup takes another 60 in width and 53 in height (one row of tabs), so a tab shows
 -- (width - 94) x (height - 110). 640 leaves 546 for three controls of 170 per row (510), also in
--- an inline group (526); 560 leaves 450 in height, enough for the tab Profiles (about 390 to 430,
--- the longest), General (about 300) and Blizzard (about 165). Every tab scrolls if it ever needs
--- more. Measurements in the README (Options dialog).
+-- an inline group (526); 560 leaves 450 in height, enough for the tab Profiles (about 375 with the
+-- eleven standard entries, the longest), General (about 300) and Blizzard (about 165). Every tab
+-- scrolls if it ever needs more. Measurements in the README (Options dialog).
 --------------------------------------------------------------------------------
 
 SMB.DialogWidth, SMB.DialogHeight = 640, 560
