@@ -30,4 +30,4 @@ Until 2026-11-07 the addon lived in the repository ZippyAddOns next to ZippyMedi
 
 ## License
 
-See [`SquareMinimapButtons/LICENSE.txt`](SquareMinimapButtons/LICENSE.txt): the ProjectAzilroka license for the parts taken from the original (used with Azilroka's permission) and the licenses of the embedded libraries (Ace3, BSD).
+See [`SquareMinimapButtons/LICENSE.txt`](SquareMinimapButtons/LICENSE.txt): the ProjectAzilroka license for the parts taken from the original and the licenses of the embedded libraries (Ace3, BSD).
