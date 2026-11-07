@@ -37,10 +37,13 @@ L['Move Queue Status Icon'] = 'LFG Symbol bewegen'
 -- WoW Forever port: options header
 L['WoW Forever port:'] = 'Portierung für WoW Forever:'
 
--- WoW Forever port: Blizzard tab
+-- WoW Forever port: Blizzard tab (the tracker glow is a radio group since 2026-11-07)
 L["Disabled while ElvUI's queue status mover is active."] = 'Gesperrt, solange ElvUIs Mover für den Warteschlangen-Status aktiv ist.'
-L['Glowing Tracker Icon when not tracking'] = 'Tracker-Symbol leuchtet, wenn nichts verfolgt wird'
-L['A red glow pulses around the tracker icon while none of your gathering tracking abilities (Find Herbs, Find Minerals, Find Treasure) is active. Only takes effect when your character knows one of them.'] = 'Ein roter Schein pulsiert um das Tracker-Symbol, solange keine Sammel-Aufspürfähigkeit (Kräutersuche, Mineraliensuche, Schatzsuche) aktiv ist. Greift nur, wenn der Charakter eine davon beherrscht.'
+L['Glowing tracking icon'] = 'Leuchtendes Tracker-Symbol'
+L['A red glow pulses around the tracking icon while you know Find Herbs, Find Minerals or Find Treasure and none of them is active.'] = 'Ein roter Schein pulsiert um das Tracker-Symbol, solange der Charakter Kräutersuche, Mineraliensuche oder Schatzsuche beherrscht und keine davon aktiv ist.'
+L['Enable glowing tracking icon if tracking is inactive (always)'] = 'Tracker-Symbol leuchtet bei inaktiver Verfolgung (immer)'
+L['Enable glowing tracking icon if tracking is inactive (only outside of raid instances)'] = 'Tracker-Symbol leuchtet bei inaktiver Verfolgung (nur außerhalb von Schlachtzügen)'
+L['Disable glowing tracking icon'] = 'Leuchtendes Tracker-Symbol ausschalten'
 
 -- WoW Forever port: guard against ProjectAzilroka
 L['ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled, so this addon stays inactive. Disable one of the two to avoid conflicts.'] = 'ProjectAzilroka ist geladen und dessen Modul Square Minimap Buttons ist aktiv, deshalb bleibt dieses Addon inaktiv. Deaktiviere eines der beiden, um Konflikte zu vermeiden.'

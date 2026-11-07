@@ -7,7 +7,9 @@
 -- Blizzard buttons in combat after combat, Blizzard settings and ElvUI's options, and a layout model
 -- of AceConfigDialog/AceGUI that checks that the tabs General, Blizzard and Profiles fit; part 2
 -- of nachtrag 2: the tab Profiles is an own group with only the standard entries of AceDBOptions
--- (entries that other addons write into the library's shared args stay out).
+-- (entries that other addons write into the library's shared args stay out); nachtrag 4: the tracker
+-- glow is a select with style 'radio' (TrackerGlowMode: always, only outside of raid instances, off),
+-- which the layout model counts as an inline group with one row per value.
 
 local FOREVER, RETAIL, CLASSIC = 18, 1, 2
 local APP = "SquareMinimapButtons"
@@ -87,7 +89,7 @@ local function keysOf(t)
 end
 
 local MBB_KEYS = { "BarEnabled", "BarMouseOver", "Backdrop", "IconSize", "ButtonSpacing", "ButtonsPerRow", "Shadows", "ReverseDirection" }
--- the Blizzard toggles that build buttons (TrackerGlow has its own setter)
+-- the Blizzard toggles that build buttons (TrackerGlowMode has its own getter and setter)
 local BLIZZARD_KEYS = { "HideGarrison", "MoveGarrison", "MoveMail", "MoveGameTimeFrame", "MoveTracker", "MoveQueue" }
 local STRATA = { "BACKGROUND", "DIALOG", "FULLSCREEN", "FULLSCREEN_DIALOG", "HIGH", "LOW", "MEDIUM", "TOOLTIP" }
 -- options that nachtrag 2 removed, anywhere in the tree
@@ -253,26 +255,96 @@ describe("structure (nachtrag 2: three tabs)", function()
         assert_eq({ m.ButtonsPerRow.min, m.ButtonsPerRow.max, m.ButtonsPerRow.step }, { 1, 100, 1 })
     end)
 
-    it("Blizzard: seven full-width toggles, the tracker glow directly under the tracker toggle", function()
+    it("Blizzard: six full-width toggles and the tracker glow choice directly under the tracker toggle", function()
         fresh()
         local b = options().args.Blizzard
         assert_eq(type(b.set), "function")
         assert_nil(b.get, "reads through the root getter")
-        assert_eq(keysOf(b.args), { "HideGarrison", "MoveGameTimeFrame", "MoveGarrison", "MoveMail", "MoveQueue", "MoveTracker", "TrackerGlow" })
+        assert_eq(keysOf(b.args), { "HideGarrison", "MoveGameTimeFrame", "MoveGarrison", "MoveMail", "MoveQueue", "MoveTracker", "TrackerGlowMode" })
         local expected = {
             { "HideGarrison", "Hide Garrison" }, { "MoveGarrison", "Move Garrison Icon" },
             { "MoveGameTimeFrame", "Move Game Time Frame" }, { "MoveMail", "Move Mail Icon" },
-            { "MoveTracker", "Move Tracker Icon" }, { "TrackerGlow", "Glowing Tracker Icon when not tracking" },
+            { "MoveTracker", "Move Tracker Icon" }, { "TrackerGlowMode", "Glowing tracking icon", "select" },
             { "MoveQueue", "Move Queue Status Icon" },
         }
         for i, e in ipairs(expected) do
             local option = b.args[e[1]]
-            assert_eq({ option.type, option.name, option.order, option.width }, { "toggle", e[2], i, "full" }, e[1])
+            assert_eq({ option.type, option.name, option.order, option.width }, { e[3] or "toggle", e[2], i, "full" }, e[1])
         end
-        assert_eq(b.args.TrackerGlow.order, b.args.MoveTracker.order + 1, "directly under MoveTracker")
-        assert_contains(b.args.TrackerGlow.desc, "(Find Herbs, Find Minerals, Find Treasure) is active. Only takes effect when your character knows one of them.")
-        assert_eq(type(b.args.TrackerGlow.set), "function")
-        assert_true(b.args.TrackerGlow.set ~= b.set, "own setter: no Blizzard rebuild for the glow")
+        assert_eq(b.args.TrackerGlowMode.order, b.args.MoveTracker.order + 1, "directly under MoveTracker")
+        assert_eq(b.args.TrackerGlowMode.order, 6)
+        assert_nil(b.args.TrackerGlow, "the old toggle is gone")
+    end)
+
+    it("the tracker glow is a select with style radio: three values in a fixed order", function()
+        local SMB = fresh()
+        local option = options().args.Blizzard.args.TrackerGlowMode
+        assert_eq(option.type, "select")
+        assert_eq(option.style, "radio", "AceConfigDialog: an inline group with one radio button per value")
+        assert_eq(option.width, "full", "one radio button per line")
+        assert_eq(option.sorting, { "always", "outsideRaid", "off" })
+        assert_eq(option.values, {
+            always = "Enable glowing tracking icon if tracking is inactive (always)",
+            outsideRaid = "Enable glowing tracking icon if tracking is inactive (only outside of raid instances)",
+            off = "Disable glowing tracking icon",
+        })
+        assert_eq(option.sorting, SMB.TrackerGlowModes, "the same order as the profile values")
+        assert_eq(option.desc, "A red glow pulses around the tracking icon while you know Find Herbs, Find Minerals or Find Treasure and none of them is active.")
+        assert_eq(type(option.get), "function")
+        assert_eq(type(option.set), "function")
+        assert_true(option.set ~= options().args.Blizzard.set, "own setter: no Blizzard rebuild for the glow")
+    end)
+
+    it("the real AceConfigDialog draws an inline group with three radio buttons; a click writes the mode", function()
+        -- without InstrumentAceConfigDialog: the real Open feeds the AceGUI widgets of the stubs
+        ResetWorld({ tracking = { TRACKING_SPELL("Find Herbs", false, 2383) }, instanceType = "raid" })
+        LoadAddon()
+        StartClient()
+        local SMB = GetAddon()
+        local container = LibStub("AceGUI-3.0"):Create("SimpleGroup")
+        LibStub("AceConfigDialog-3.0"):Open(APP, container, "Blizzard")
+        local group
+        for _, child in ipairs(container.children) do
+            if child.type == "InlineGroup" then group = child end
+        end
+        assert_true(group ~= nil, "an InlineGroup in the tab")
+        assert_eq(group.titletext:GetText(), "Glowing tracking icon")
+        local shown = {}
+        for i, radio in ipairs(group.children) do
+            assert_eq(radio.type, "CheckBox")
+            shown[i] = { radio:GetUserData("value"), radio.text:GetText(), radio.checked and true or false, radio.width }
+        end
+        assert_eq(shown, {
+            { "always", "Enable glowing tracking icon if tracking is inactive (always)", false, "fill" },
+            { "outsideRaid", "Enable glowing tracking icon if tracking is inactive (only outside of raid instances)", true, "fill" },
+            { "off", "Disable glowing tracking icon", false, "fill" },
+        })
+        assert_false(SMB.TrackerGlow ~= nil and SMB.TrackerGlow:IsShown(), "no glow in the raid by default")
+        group.children[1]:Fire("OnValueChanged", true)
+        assert_eq(SMB.db.TrackerGlowMode, "always")
+        assert_true(SMB.TrackerGlow ~= nil and SMB.TrackerGlow:IsShown(), "the glow at once")
+        assert_eq(STUB.errors, {})
+    end)
+
+    it("the getter reads the mode, an unknown stored value reads as outsideRaid", function()
+        local SMB = fresh()
+        assert_eq(getValue({ "Blizzard", "TrackerGlowMode" }), "outsideRaid")
+        for _, mode in ipairs({ "always", "off", "outsideRaid" }) do
+            SMB.db.TrackerGlowMode = mode
+            assert_eq(getValue({ "Blizzard", "TrackerGlowMode" }), mode)
+        end
+        SMB.db.TrackerGlowMode = "bogus"
+        assert_eq(getValue({ "Blizzard", "TrackerGlowMode" }), "outsideRaid", "always one radio button checked")
+    end)
+
+    it("the setter writes the mode and updates the glow once, without Blizzard rebuild or dialog", function()
+        local SMB = fresh()
+        local glow, blizzard = spy(SMB, "UpdateTrackerGlow"), spy(SMB, "HandleBlizzardButtons")
+        setValue({ "Blizzard", "TrackerGlowMode" }, "always")
+        assert_eq(SMB.db.TrackerGlowMode, "always")
+        assert_eq(glow.n, 1)
+        assert_eq(blizzard.n, 0)
+        assert_eq(STUB.popups, {})
     end)
 
     it("no Visibility and no Extensions anywhere in the tree", function()
@@ -307,8 +379,14 @@ describe("structure (nachtrag 2: three tabs)", function()
         assert_eq(o.args.General.args.Strata.name, "Fenster Schicht")
         assert_eq(o.args.General.args.AuthorHeader.name, "Autoren:")
         assert_eq(o.args.General.args.PortAuthor.name, "Portierung für WoW Forever: Zippy")
-        assert_eq(o.args.Blizzard.args.TrackerGlow.name, "Tracker-Symbol leuchtet, wenn nichts verfolgt wird")
-        assert_contains(o.args.Blizzard.args.TrackerGlow.desc, "(Kräutersuche, Mineraliensuche, Schatzsuche) aktiv ist. Greift nur, wenn der Charakter eine davon beherrscht.")
+        local glow = o.args.Blizzard.args.TrackerGlowMode
+        assert_eq(glow.name, "Leuchtendes Tracker-Symbol")
+        assert_contains(glow.desc, "Kräutersuche, Mineraliensuche oder Schatzsuche beherrscht und keine davon aktiv ist.")
+        assert_eq(glow.values, {
+            always = "Tracker-Symbol leuchtet bei inaktiver Verfolgung (immer)",
+            outsideRaid = "Tracker-Symbol leuchtet bei inaktiver Verfolgung (nur außerhalb von Schlachtzügen)",
+            off = "Leuchtendes Tracker-Symbol ausschalten",
+        })
         assert_eq(o.args.profiles.name, "Profile")
     end)
 end)
@@ -489,8 +567,8 @@ describe("getters and setters", function()
         end
         SMB.db.Enable = false
         assert_eq(getValue({ "General", "Enable" }), false)
-        SMB.db.TrackerGlow = false
-        assert_eq(getValue({ "Blizzard", "TrackerGlow" }), false)
+        SMB.db.TrackerGlowMode = "off"
+        assert_eq(getValue({ "Blizzard", "TrackerGlowMode" }), "off")
     end)
 
     it("the getters read the current profile after a profile change", function()
@@ -707,6 +785,11 @@ end)
 --     (height "fill"), and FeedGroup puts each tab's content into a ScrollFrame
 --   ScrollFrame: the full content area, minus 20 for the scroll bar only when it is needed
 --   InlineGroup (AceGUIContainer-InlineGroup.lua): content width - 20, height = content + 40
+--     (LayoutFinished 32-35, OnWidthSet 37-45; the title of 18 and the border lie in the 40)
+--   select with style "radio" (AceConfigDialog-3.0.lua 1232-1273): an InlineGroup with width
+--     "fill", the option name as its title and one CheckBox of type radio per value in the order
+--     of sorting (alphabetical without it); a radio with width "full" fills its row, so each value
+--     is a row of 24 + 3 (CheckBox without description: SetDescription(nil) sets 24)
 --   Flow layout (AceGUI-3.0.lua): rows packed left to right, 3 between rows and after the last;
 --     a control offsets by its alignoffset (or half its height) when it shares a row
 --   CheckBox 24 (no inline description), Slider 44 (alignoffset 25), Dropdown with label 40
@@ -760,6 +843,12 @@ local function flowGroup(group, width, path, top, bottoms, handler)
         for _, key in ipairs(row) do bottoms[#bottoms + 1] = { key, top + height + rowheight } end
         row = {}
     end
+    -- the top of the content of an inline group: a group fills its row, so it starts a new row
+    -- below the open one (if any); its content starts 27 lower (InlineGroup Constructor: border at
+    -- 0, -17 under the title, content at 10, -10 in the border; the other 13 of the 40 are below it)
+    local function groupTop()
+        return top + height + (first and 0 or rowheight + 3) + 27
+    end
     for _, key in ipairs(keys) do
         local option = group.args[key]
         local info = {}
@@ -772,7 +861,26 @@ local function flowGroup(group, width, path, top, bottoms, handler)
                 fill = true
                 fw = width
                 local inner = {}
-                local innerHeight = flowGroup(option, width - 20, info, top + height + 10, inner, handler)
+                local innerHeight = flowGroup(option, width - 20, info, groupTop(), inner, handler)
+                fh = innerHeight + 40
+                for _, b in ipairs(inner) do bottoms[#bottoms + 1] = b end
+            elseif option.type == "select" and option.style == "radio" then
+                -- an InlineGroup of radio buttons (toggles of the option's width), one per value
+                fill = true
+                fw = width
+                local values = textOf(option.values, info)
+                local sorting = textOf(option.sorting, info)
+                if not sorting then
+                    sorting = {}
+                    for value in pairs(values) do sorting[#sorting + 1] = value end
+                    table.sort(sorting, function(a, b) return tostring(a) < tostring(b) end)
+                end
+                local radios = { args = {} }
+                for i, value in ipairs(sorting) do
+                    radios.args[key .. "." .. tostring(value)] = { type = "toggle", width = option.width, order = i }
+                end
+                local inner = {}
+                local innerHeight = flowGroup(radios, width - 20, info, groupTop(), inner, handler)
                 fh = innerHeight + 40
                 for _, b in ipairs(inner) do bottoms[#bottoms + 1] = b end
             elseif option.type == "description" and not option.width then
@@ -846,9 +954,27 @@ describe("layout of the dialog (nachtrag 2: nothing reaches past the frame)", fu
         local SMB = fresh({ projectID = FOREVER })
         local general, available, width = measureTab("General", SMB.DialogWidth, SMB.DialogHeight)
         local blizzard = measureTab("Blizzard", SMB.DialogWidth, SMB.DialogHeight)
-        assert_eq({ general, blizzard, available, width }, { 299, 135, 450, 546 })
+        -- Blizzard: four toggles (4 x 27) and the radio group (3 x 27 + 40, then 3)
+        assert_eq({ general, blizzard, available, width }, { 299, 232, 450, 546 })
         fresh({ projectID = RETAIL })
-        assert_eq((measureTab("Blizzard", SMB.DialogWidth, SMB.DialogHeight)), 162, "Retail: six toggles")
+        assert_eq((measureTab("Blizzard", SMB.DialogWidth, SMB.DialogHeight)), 259, "Retail: five toggles and the radio group")
+    end)
+
+    it("the radio group of the tracker glow: an inline group with one row per value", function()
+        local SMB = fresh({ projectID = FOREVER })
+        local _, _, _, bottoms = measureTab("Blizzard", SMB.DialogWidth, SMB.DialogHeight)
+        local at = {}
+        for _, b in ipairs(bottoms) do at[b[1]] = b[2] end
+        -- MoveTracker ends at 3 x 27 - 3 = 78; the group starts at 81, its content 27 lower (108)
+        assert_eq(at.MoveTracker, 78)
+        assert_eq({ at["TrackerGlowMode.always"], at["TrackerGlowMode.outsideRaid"], at["TrackerGlowMode.off"] }, { 132, 159, 186 })
+        assert_eq(at.MoveQueue, 81 + 121 + 3 + 24, "MoveQueue under the group (121 high)")
+        -- without width "full" the three radios of 170 would share one row
+        local option = SMB.Options.args.Blizzard.args.TrackerGlowMode
+        option.width = nil
+        local narrow = measureTab("Blizzard", SMB.DialogWidth, SMB.DialogHeight)
+        option.width = "full"
+        assert_eq(narrow, 232 - 54, "two rows fewer")
     end)
 
     it("Profiles: only the eleven standard entries count; 374 of 450, also with another addon's entries", function()
@@ -886,6 +1012,10 @@ describe("layout of the dialog (nachtrag 2: nothing reaches past the frame)", fu
                 info[#info + 1] = key
                 if not textOf(option.hidden, info) then
                     if option.type == "group" then total = total + 40 + sum(option, info)
+                    elseif option.type == "select" and option.style == "radio" then
+                        local n = 0
+                        for _ in pairs(textOf(option.values, info)) do n = n + 1 end
+                        total = total + 40 + 24 * n
                     elseif option.type == "toggle" then total = total + 24
                     elseif option.type == "range" then total = total + 44
                     elseif option.type == "select" then total = total + 40
@@ -1014,8 +1144,10 @@ describe("profiles, Blizzard settings, dialog", function()
         cmd:HandleCommand("smbtest", APP, "blizzard movequeue on")
         assert_eq(SMB.db.MoveQueue, true)
         assert_eq(blizzard.n, 1)
-        cmd:HandleCommand("smbtest", APP, "blizzard trackerglow off")
-        assert_eq(SMB.db.TrackerGlow, false)
+        cmd:HandleCommand("smbtest", APP, "blizzard trackerglowmode off")
+        assert_eq(SMB.db.TrackerGlowMode, "off")
+        cmd:HandleCommand("smbtest", APP, "blizzard trackerglowmode outsideraid")
+        assert_eq(SMB.db.TrackerGlowMode, "outsideRaid", "AceConfigCmd maps the case back to the key")
         assert_eq(blizzard.n, 1, "the glow builds nothing")
         assert_eq(STUB.errors, {})
     end)

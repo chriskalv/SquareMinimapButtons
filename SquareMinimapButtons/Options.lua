@@ -24,7 +24,10 @@
 	    original only adds buttons and needs a reload without saying so); MoveQueue is disabled with a
 	    hint while ElvUI's queue module holds the queue button;
 	  - Blizzard buttons in combat are built after combat (SMB:RequestBlizzardButtons in Core.lua);
-	  - a toggle "Glowing Tracker Icon when not tracking" (db.TrackerGlow) under the tracker toggle;
+	  - a choice "Glowing tracking icon" (db.TrackerGlowMode; until 2026-11-07 a toggle) under the
+	    tracker toggle: a select with style 'radio', which AceConfigDialog shows as an inline group
+	    titled with the option name and one radio button per value (in the order of sorting);
+	    always, only outside of raid instances (the default) or off;
 	  - a line "WoW Forever port: Zippy" under the authors;
 	  - registered both in the Blizzard settings (the same three tabs) and, when ElvUI's plugin
 	    library is there, in ElvUI's options (ProjectAzilroka uses one or the other).
@@ -113,10 +116,23 @@ local function setEnable(info, value)
 	SMB:UpdateTrackerGlow() -- off: the glow goes at once
 end
 
--- The tracker glow needs no rebuild and no reload.
-local function setTrackerGlow(info, value)
+-- The tracker glow needs no rebuild and no reload; an unknown stored value reads as the default.
+local function getTrackerGlowMode()
+	return SMB:GetTrackerGlowMode()
+end
+
+local function setTrackerGlowMode(info, value)
 	SMB.db[info[#info]] = value
 	SMB:UpdateTrackerGlow()
+end
+
+-- the radio buttons of the tracker glow (keys of SMB.TrackerGlowModes)
+local function trackerGlowModeValues()
+	return {
+		always = L['Enable glowing tracking icon if tracking is inactive (always)'],
+		outsideRaid = L['Enable glowing tracking icon if tracking is inactive (only outside of raid instances)'],
+		off = L['Disable glowing tracking icon'],
+	}
 end
 
 local function queueDesc()
@@ -160,7 +176,8 @@ function SMB:GetOptions()
 	General.args.Strata = { type = 'select', name = L['Frame Strata'], order = 7, values = STRATA }
 	General.args.Level = { type = 'range', name = L['Frame Level'], order = 8, min = 0, max = 255, step = 1 }
 
-	-- Tab Blizzard: one toggle per line (full width), the tracker glow under the tracker toggle
+	-- Tab Blizzard: one toggle per line (full width), the tracker glow (radio group) under the
+	-- tracker toggle
 	local Blizzard = { type = 'group', name = L['Blizzard'], order = 2, set = setBlizzard, args = {} }
 	Options.args.Blizzard = Blizzard
 	Blizzard.args.HideGarrison = {
@@ -182,10 +199,13 @@ function SMB:GetOptions()
 		type = 'toggle', name = L['Move Tracker Icon'], order = 5, width = 'full',
 		hidden = function() return SMB.IsClassic end,
 	}
-	Blizzard.args.TrackerGlow = {
-		type = 'toggle', name = L['Glowing Tracker Icon when not tracking'], order = 6, width = 'full',
-		desc = L['A red glow pulses around the tracker icon while none of your gathering tracking abilities (Find Herbs, Find Minerals, Find Treasure) is active. Only takes effect when your character knows one of them.'],
-		set = setTrackerGlow,
+	Blizzard.args.TrackerGlowMode = {
+		type = 'select', style = 'radio', name = L['Glowing tracking icon'], order = 6, width = 'full',
+		desc = L['A red glow pulses around the tracking icon while you know Find Herbs, Find Minerals or Find Treasure and none of them is active.'],
+		values = trackerGlowModeValues(),
+		sorting = { 'always', 'outsideRaid', 'off' },
+		get = getTrackerGlowMode,
+		set = setTrackerGlowMode,
 		hidden = function() return SMB.IsClassic end,
 	}
 	Blizzard.args.MoveQueue = {
@@ -295,7 +315,8 @@ end
 -- the TabGroup takes another 60 in width and 53 in height (one row of tabs), so a tab shows
 -- (width - 94) x (height - 110). 640 leaves 546 for three controls of 170 per row (510), also in
 -- an inline group (526); 560 leaves 450 in height, enough for the tab Profiles (about 375 with the
--- eleven standard entries, the longest), General (about 300) and Blizzard (about 165). Every tab
+-- eleven standard entries, the longest), General (about 300) and Blizzard (about 260 with the radio
+-- group of the tracker glow). Every tab
 -- scrolls if it ever needs more. Measurements in the README (Options dialog).
 --------------------------------------------------------------------------------
 

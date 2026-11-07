@@ -36,10 +36,14 @@ L['Move Queue Status Icon'] = true
 -- WoW Forever port: options header
 L['WoW Forever port:'] = true
 
--- WoW Forever port: Blizzard tab
+-- WoW Forever port: Blizzard tab (the tracker glow is a radio group since 2026-11-07: its title,
+-- its tooltip and one text per radio button)
 L["Disabled while ElvUI's queue status mover is active."] = true
-L['Glowing Tracker Icon when not tracking'] = true
-L['A red glow pulses around the tracker icon while none of your gathering tracking abilities (Find Herbs, Find Minerals, Find Treasure) is active. Only takes effect when your character knows one of them.'] = true
+L['Glowing tracking icon'] = true
+L['A red glow pulses around the tracking icon while you know Find Herbs, Find Minerals or Find Treasure and none of them is active.'] = true
+L['Enable glowing tracking icon if tracking is inactive (always)'] = true
+L['Enable glowing tracking icon if tracking is inactive (only outside of raid instances)'] = true
+L['Disable glowing tracking icon'] = true
 
 -- WoW Forever port: guard against ProjectAzilroka
 L['ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled, so this addon stays inactive. Disable one of the two to avoid conflicts.'] = true

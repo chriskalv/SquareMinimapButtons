@@ -1031,6 +1031,18 @@ local function installClientState(config)
     end
     UnitIsDeadOrGhost = function(unit) return unit == "player" and STUB.dead == true end
     HasFullControl = function() return STUB.control ~= false end
+    -- Instance (API documentation: IsInInstance() -> isInInstance bool, instanceType cstring, no secret
+    -- marking): STUB.instanceType is "none" (the open world, default), "party" (a dungeon), "raid",
+    -- "pvp", "arena" or "scenario"; config.instanceType sets it, SetInstance(instanceType) changes it.
+    -- config.noIsInInstance = true leaves IsInInstance out.
+    if config.noIsInInstance then
+        IsInInstance = nil
+    else
+        IsInInstance = function()
+            local instanceType = STUB.instanceType or "none"
+            return instanceType ~= "none", instanceType
+        end
+    end
     HasNewMail = function() return STUB.newMail end
     GetPhysicalScreenSize = function() return 1920, 1080 end
     GetScreenWidth = function() return 1920 end
@@ -1333,6 +1345,7 @@ function InstallStubs(config)
         textureFileIDs = {}, loggedIn = config.loggedIn == true, combat = config.combat == true,
         petBattle = config.petBattle == true, newMail = config.newMail == true,
         tracking = config.tracking or {}, dead = config.dead == true, control = config.control ~= false,
+        instanceType = config.instanceType or "none",
         spellNames = config.spellNames or {
             [2383] = "Find Herbs", [2580] = "Find Minerals", [2481] = "Find Treasure",
             [5502] = "Sense Undead", [5500] = "Sense Demons", [1494] = "Track Beasts", [19883] = "Track Humanoids",
@@ -1437,6 +1450,9 @@ end
 function SetTrackingList(list) STUB.tracking = list end
 function SetPlayerDead(dead) STUB.dead = dead and true or false end
 function SetFullControl(control) STUB.control = control and true or false end
+-- Enters or leaves an instance (IsInInstance); fire PLAYER_ENTERING_WORLD or ZONE_CHANGED_NEW_AREA
+-- to tell the addon.
+function SetInstance(instanceType) STUB.instanceType = instanceType or "none" end
 
 -- New mail arrives or is read: HasNewMail() and the event UPDATE_PENDING_MAIL.
 function SetNewMail(hasMail)

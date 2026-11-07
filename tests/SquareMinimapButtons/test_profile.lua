@@ -1,7 +1,8 @@
 -- Test group 8 (part for package 1): default profile, MoveQueue per client, profile callbacks,
 -- "/smb reset", saved variables file; since nachtrag 2 the shared profile "Default" (AceDB:New with
 -- defaultProfile true) and the one-time switch of characters on their own profile, which takes
--- their values over while Default is untouched (part 2 of nachtrag 2).
+-- their values over while Default is untouched (part 2 of nachtrag 2); since nachtrag 4 the tracker
+-- glow mode TrackerGlowMode instead of the toggle TrackerGlow, with the migration of old profiles.
 
 local EXPECTED_FOREVER = {
     Enable = true,
@@ -21,7 +22,7 @@ local EXPECTED_FOREVER = {
     MoveGameTimeFrame = true,
     MoveTracker = true,
     MoveQueue = false,
-    TrackerGlow = true,
+    TrackerGlowMode = "outsideRaid",
     AnchorToMinimap = true,
     Point = "TOPLEFT",
     RelativePoint = "TOPLEFT",
@@ -29,8 +30,8 @@ local EXPECTED_FOREVER = {
     Y = -1,
 }
 
--- keys that nachtrag 2 removed (Visibility, Lock, own ignore list)
-local REMOVED = { "Visibility", "Lock", "IgnoreList" }
+-- keys that nachtrag 2 removed (Visibility, Lock, own ignore list) and nachtrag 4 (the toggle TrackerGlow)
+local REMOVED = { "Visibility", "Lock", "IgnoreList", "TrackerGlow" }
 
 local function copy(t)
     local c = {}
@@ -78,7 +79,7 @@ describe("default profile", function()
         end
     end)
 
-    it("declares no other keys (no Visibility, Lock or IgnoreList any more)", function()
+    it("declares no other keys (no Visibility, Lock, IgnoreList or TrackerGlow any more)", function()
         local SMB = started({})
         local keys = {}
         for key in pairs(SMB.Defaults.profile) do keys[key] = true end
@@ -88,9 +89,13 @@ describe("default profile", function()
         for _, key in ipairs(REMOVED) do assert_nil(SMB.Defaults.profile[key], key) end
     end)
 
-    it("TrackerGlow is on by default in every client", function()
+    it("TrackerGlowMode is outsideRaid by default in every client; no TrackerGlow", function()
         for _, id in ipairs({ 18, 1, 2 }) do
-            assert_true(started({ projectID = id }).db.TrackerGlow, "client " .. id)
+            local SMB = started({ projectID = id })
+            assert_eq(SMB.db.TrackerGlowMode, "outsideRaid", "client " .. id)
+            assert_nil(SMB.db.TrackerGlow, "client " .. id)
+            assert_eq(SMB.DefaultTrackerGlowMode, "outsideRaid")
+            assert_eq(SMB.TrackerGlowModes, { "always", "outsideRaid", "off" })
         end
     end)
 
@@ -296,6 +301,93 @@ describe("one-time switch to Default for characters of the first test versions",
     end)
 end)
 
+describe("migration of the toggle TrackerGlow (nachtrag 4)", function()
+    local function file(profiles, current)
+        return {
+            profileKeys = { ["Zippy - Forever"] = current or "Default" },
+            profiles = profiles,
+        }
+    end
+
+    it("stored TrackerGlow = false becomes TrackerGlowMode off, the old key is removed", function()
+        local SMB = started({ savedVariables = file({ Default = { TrackerGlow = false, IconSize = 24 } }) })
+        assert_eq(SMB.db.TrackerGlowMode, "off")
+        local stored = SquareMinimapButtonsDB.profiles.Default
+        assert_nil(rawget(stored, "TrackerGlow"), "old key removed from the stored table")
+        assert_eq(rawget(stored, "TrackerGlowMode"), "off")
+        assert_eq(SMB.db.IconSize, 24, "other values stay")
+        assert_eq(STUB.errors, {})
+    end)
+
+    it("stored TrackerGlow = true keeps the default, the old key is removed", function()
+        local SMB = started({ savedVariables = file({ Default = { TrackerGlow = true } }) })
+        assert_eq(SMB.db.TrackerGlowMode, "outsideRaid")
+        assert_nil(rawget(SquareMinimapButtonsDB.profiles.Default, "TrackerGlow"))
+    end)
+
+    it("no TrackerGlow stored: the default", function()
+        local SMB = started({ savedVariables = file({ Default = { IconSize = 24 } }) })
+        assert_eq(SMB.db.TrackerGlowMode, "outsideRaid")
+        assert_nil(rawget(SquareMinimapButtonsDB.profiles.Default, "TrackerGlow"))
+    end)
+
+    it("a profile that stores TrackerGlowMode keeps it", function()
+        for _, mode in ipairs({ "always", "off", "outsideRaid" }) do
+            local SMB = started({ savedVariables = file({ Default = { TrackerGlowMode = mode } }) })
+            assert_eq(SMB.db.TrackerGlowMode, mode)
+        end
+        -- both keys (only after a downgrade): the stored mode wins, the old key goes
+        local SMB = started({ savedVariables = file({ Default = { TrackerGlowMode = "always", TrackerGlow = false } }) })
+        assert_eq(SMB.db.TrackerGlowMode, "always")
+        assert_nil(rawget(SquareMinimapButtonsDB.profiles.Default, "TrackerGlow"))
+    end)
+
+    it("runs again after SetProfile to another old profile (and after CopyProfile)", function()
+        local SMB = started({ savedVariables = file({ Default = {}, Old = { TrackerGlow = false }, Older = { TrackerGlow = false } }) })
+        assert_eq(SMB.db.TrackerGlowMode, "outsideRaid")
+        SMB.data:SetProfile("Old")
+        assert_eq(SMB.db.TrackerGlowMode, "off", "migrated on the profile change")
+        assert_nil(rawget(SquareMinimapButtonsDB.profiles.Old, "TrackerGlow"))
+        SMB.data:SetProfile("Default")
+        assert_eq(SMB.db.TrackerGlowMode, "outsideRaid")
+        SMB.data:CopyProfile("Older")
+        assert_eq(SMB.db.TrackerGlowMode, "off", "the copy of an old profile is migrated")
+        assert_nil(rawget(SquareMinimapButtonsDB.profiles.Default, "TrackerGlow"))
+    end)
+
+    it("after the one-time switch to Default the copied old values are migrated too", function()
+        local SMB = started({ savedVariables = file({ ["Zippy - Forever"] = { TrackerGlow = false, IconSize = 24 } }, "Zippy - Forever") })
+        assert_eq(SMB.data:GetCurrentProfile(), "Default")
+        assert_eq(SMB.db.IconSize, 24)
+        assert_eq(SMB.db.TrackerGlowMode, "off")
+        assert_nil(rawget(SquareMinimapButtonsDB.profiles.Default, "TrackerGlow"))
+    end)
+
+    it("the stored mode survives the logout (AceDB removes only the defaults)", function()
+        started({ savedVariables = file({ Default = { TrackerGlow = false } }) })
+        FireEvent("PLAYER_LOGOUT")
+        assert_eq(SquareMinimapButtonsDB.profiles.Default, { TrackerGlowMode = "off" })
+        started({ savedVariables = file({ Default = { TrackerGlow = true } }) })
+        FireEvent("PLAYER_LOGOUT")
+        assert_nil(SquareMinimapButtonsDB.profiles.Default and next(SquareMinimapButtonsDB.profiles.Default), "nothing left to store")
+    end)
+
+    it("MigrateTrackerGlow is idempotent and returns whether the old key was there", function()
+        ReloadAddon({})
+        local SMB = GetAddon()
+        local profile = { TrackerGlow = false }
+        assert_true(SMB:MigrateTrackerGlow(profile))
+        assert_eq(profile, { TrackerGlowMode = "off" })
+        assert_false(SMB:MigrateTrackerGlow(profile))
+        assert_eq(profile, { TrackerGlowMode = "off" })
+        profile = { TrackerGlow = true }
+        assert_true(SMB:MigrateTrackerGlow(profile))
+        assert_eq(profile, {})
+        assert_false(SMB:MigrateTrackerGlow(nil))
+        assert_false(SMB:MigrateTrackerGlow({}))
+    end)
+end)
+
 describe("profile callbacks", function()
     local function withSpies()
         local SMB = started({})
@@ -352,7 +444,7 @@ describe("/smb reset", function()
         local SMB = started({})
         SMB.db.IconSize = 40
         SMB.db.ButtonsPerRow = 8
-        SMB.db.TrackerGlow = false
+        SMB.db.TrackerGlowMode = "off"
         RunSlash("/smb", "reset")
         assert_eq(profileValues(SMB.db), EXPECTED_FOREVER)
         assert_eq(ChatContains("The current profile was reset to the defaults."), 1)

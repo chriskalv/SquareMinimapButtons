@@ -20,7 +20,7 @@ local addonName, ns = ...
 local _G = _G
 local LibStub = _G.LibStub
 
-local type, pairs, ipairs, select, format, tostring, next, rawget = type, pairs, ipairs, select, format, tostring, next, rawget
+local type, pairs, ipairs, select, format, tostring, next, rawget, rawset = type, pairs, ipairs, select, format, tostring, next, rawget, rawset
 local strlower, strtrim = strlower, strtrim
 
 local SMB = LibStub('AceAddon-3.0'):NewAddon('SquareMinimapButtons', 'AceEvent-3.0', 'AceHook-3.0', 'AceTimer-3.0', 'AceConsole-3.0')
@@ -178,7 +178,13 @@ end
 -- are the lock and the own ignore list of this port. The anchor keys stay in the profile without
 -- options: the bar is anchored to the minimap as before, and a profile that was set to a free
 -- position in an earlier test version keeps it (see ApplyBarPosition).
+-- TrackerGlowMode (2026-11-07, replaces the toggle TrackerGlow): 'always', 'outsideRaid' (the
+-- default: no glow in a raid instance) or 'off'; see SMB:MigrateTrackerGlow for old profiles.
 --------------------------------------------------------------------------------
+
+-- the values of TrackerGlowMode in the order of the options, and the default
+SMB.TrackerGlowModes = { 'always', 'outsideRaid', 'off' }
+SMB.DefaultTrackerGlowMode = 'outsideRaid'
 
 function SMB.BuildDefaults(isForever)
 	return {
@@ -202,7 +208,7 @@ function SMB.BuildDefaults(isForever)
 			MoveQueue = not isForever,
 
 			-- extensions of this port
-			TrackerGlow = true, -- red glow on the tracker button while nothing is tracked
+			TrackerGlowMode = SMB.DefaultTrackerGlowMode, -- red glow on the tracker button while nothing is tracked
 			-- position of the bar (no options since 2026-11-06, see above)
 			AnchorToMinimap = true,
 			Point = 'TOPLEFT',
@@ -216,10 +222,40 @@ end
 
 SMB.Defaults = SMB.BuildDefaults(SMB.IsForever)
 
+-- The toggle TrackerGlow (until 2026-11-07) became TrackerGlowMode. A profile that stores
+-- TrackerGlow = false (AceDB stores only values that differ from the defaults, so true is normally
+-- not stored) gets TrackerGlowMode 'off', unless it already stores another mode; TrackerGlow = true
+-- keeps the default. The old key is removed either way. AceDB copies the defaults into the profile
+-- table when it is read, so a stored mode cannot be told apart from the default 'outsideRaid'; it
+-- counts as not set (a profile with both keys only exists after a downgrade). Runs on the stored
+-- table (rawget/rawset), at load and on every profile change, copy and reset (ApplySettings), and
+-- does nothing a second time. Returns true if the profile had the old key.
+function SMB:MigrateTrackerGlow(profile)
+	if type(profile) ~= 'table' then return false end
+	local old = rawget(profile, 'TrackerGlow')
+	if old == nil then return false end
+	local mode = rawget(profile, 'TrackerGlowMode')
+	if old == false and mode ~= 'always' and mode ~= 'off' then
+		rawset(profile, 'TrackerGlowMode', 'off')
+	end
+	rawset(profile, 'TrackerGlow', nil)
+	return true
+end
+
+-- the stored table of the current profile (nil if AceDB has not created it yet)
+function SMB:GetStoredProfile(data)
+	data = data or self.data
+	if type(data) ~= 'table' or type(data.keys) ~= 'table' then return nil end
+	local profiles = rawget(data, 'profiles')
+	if type(profiles) ~= 'table' then return nil end
+	return rawget(profiles, data.keys.profile)
+end
+
 -- Called on profile change, copy and reset: read the settings again and rebuild what exists
 -- (position of the bar, the bar, the Blizzard buttons, the tracker glow).
 function SMB:ApplySettings()
 	if not self.data then return end
+	self:MigrateTrackerGlow(self:GetStoredProfile())
 	self.db = self.data.profile
 	if self.blocked then return end
 	if self.ApplyBarPosition then self:ApplyBarPosition() end
@@ -427,6 +463,7 @@ function SMB:OnInitialize()
 	if switched then
 		self.sharedProfileMessage = self:SharedProfileMessage(copied, oldName)
 	end
+	self:MigrateTrackerGlow(self:GetStoredProfile())
 	self.db = self.data.profile
 
 	self.data.RegisterCallback(self, 'OnProfileChanged', 'ApplySettings')

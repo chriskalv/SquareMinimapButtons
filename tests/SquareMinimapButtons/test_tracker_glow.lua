@@ -4,6 +4,8 @@
 -- ghost or without full control). The tracking entries come from the stubs of
 -- C_Minimap.GetNumTrackingTypes and C_Minimap.GetTrackingInfo (MinimapScriptTrackingInfo: name,
 -- texture, active, type, subType, spellID), spell names from the stub of C_Spell.GetSpellName.
+-- Nachtrag 4: the toggle became db.TrackerGlowMode ('always', 'outsideRaid' = the default, 'off');
+-- 'outsideRaid' shows no glow in a raid instance (stub of IsInInstance, SetInstance).
 
 local FOREVER, RETAIL, CLASSIC = 18, 1, 2
 
@@ -163,19 +165,19 @@ describe("when the glow shows", function()
         assert_true(glowShown(SMB))
     end)
 
-    it("toggle off: no glow; the setter hides it at once and shows it again", function()
-        local SMB = fresh(withProfile({ TrackerGlow = false }, { tracking = gatherer(false) }))
+    it("mode off: no glow; the setter hides it at once and shows it again", function()
+        local SMB = fresh(withProfile({ TrackerGlowMode = "off" }, { tracking = gatherer(false) }))
         assert_false(glowShown(SMB))
-        SMB.db.TrackerGlow = true
+        SMB.db.TrackerGlowMode = "always"
         SMB:UpdateTrackerGlow()
         assert_true(glowShown(SMB))
         local o = LibStub("AceConfigRegistry-3.0"):GetOptionsTable("SquareMinimapButtons", "dialog", "AceConfigDialog-3.0")
-        local option = o.args.Blizzard.args.TrackerGlow
-        option.set({ "Blizzard", "TrackerGlow" }, false)
-        assert_eq(SMB.db.TrackerGlow, false)
+        local option = o.args.Blizzard.args.TrackerGlowMode
+        option.set({ "Blizzard", "TrackerGlowMode" }, "off")
+        assert_eq(SMB.db.TrackerGlowMode, "off")
         assert_false(glowShown(SMB), "hidden at once, no reload")
         assert_eq(STUB.popups, {}, "no reload dialog")
-        option.set({ "Blizzard", "TrackerGlow" }, true)
+        option.set({ "Blizzard", "TrackerGlowMode" }, "outsideRaid")
         assert_true(glowShown(SMB))
     end)
 
@@ -201,9 +203,9 @@ describe("when the glow shows", function()
         assert_false(glowShown(SMB))
     end)
 
-    it("a profile change applies the toggle of the new profile", function()
+    it("a profile change applies the mode of the new profile", function()
         local config = withProfile({}, { tracking = gatherer(false) })
-        config.savedVariables.profiles.Other = { TrackerGlow = false }
+        config.savedVariables.profiles.Other = { TrackerGlowMode = "off" }
         local SMB = fresh(config)
         assert_true(glowShown(SMB))
         SMB.data:SetProfile("Other")
@@ -301,11 +303,11 @@ describe("events", function()
         assert_true(glowShown(SMB))
     end)
 
-    it("registers all eight events (PLAYER_ENTERING_WORLD through the scan handler)", function()
+    it("registers all nine events (PLAYER_ENTERING_WORLD through the scan handler)", function()
         local SMB = fresh({ tracking = gatherer(false) })
         assert_eq(SMB.TrackerGlowEvents, {
             "MINIMAP_UPDATE_TRACKING", "SPELLS_CHANGED", "PLAYER_DEAD", "PLAYER_ALIVE", "PLAYER_UNGHOST",
-            "PLAYER_CONTROL_GAINED", "PLAYER_CONTROL_LOST",
+            "PLAYER_CONTROL_GAINED", "PLAYER_CONTROL_LOST", "ZONE_CHANGED_NEW_AREA",
         })
         for _, event in ipairs(SMB.TrackerGlowEvents) do
             assert_true(#(STUB.eventFrames[event] or {}) >= 1, event)
@@ -419,12 +421,149 @@ describe("where the glow sits", function()
         assert_eq(STUB.errors, {})
     end)
 
-    it("the toggle is hidden in Classic, shown in Forever and Retail", function()
+    it("the choice is hidden in Classic, shown in Forever and Retail", function()
         for _, case in ipairs({ { FOREVER, false }, { RETAIL, false }, { CLASSIC, true } }) do
             fresh({ projectID = case[1] })
             local o = LibStub("AceConfigRegistry-3.0"):GetOptionsTable("SquareMinimapButtons", "dialog", "AceConfigDialog-3.0")
-            local hidden = o.args.Blizzard.args.TrackerGlow.hidden({ "Blizzard", "TrackerGlow" })
+            local hidden = o.args.Blizzard.args.TrackerGlowMode.hidden({ "Blizzard", "TrackerGlowMode" })
             assert_eq(hidden and true or false, case[2], "client " .. case[1])
         end
+    end)
+end)
+
+describe("mode: always, only outside of raid instances, off (nachtrag 4)", function()
+    local function optionSet(value)
+        local o = LibStub("AceConfigRegistry-3.0"):GetOptionsTable("SquareMinimapButtons", "dialog", "AceConfigDialog-3.0")
+        o.args.Blizzard.args.TrackerGlowMode.set({ "Blizzard", "TrackerGlowMode" }, value)
+    end
+
+    it("the default is outsideRaid", function()
+        local SMB = fresh({ tracking = gatherer(false) })
+        assert_eq(SMB.db.TrackerGlowMode, "outsideRaid")
+        assert_eq(SMB:GetTrackerGlowMode(), "outsideRaid")
+        assert_nil(SMB.db.TrackerGlow, "the old toggle is gone")
+    end)
+
+    it("outsideRaid (default) in the open world: glow", function()
+        local SMB = fresh({ tracking = gatherer(false), instanceType = "none" })
+        assert_false(SMB:IsInRaidInstance())
+        assert_true(glowShown(SMB))
+    end)
+
+    it("outsideRaid in a dungeon (party): glow", function()
+        local SMB = fresh({ tracking = gatherer(false), instanceType = "party" })
+        assert_false(SMB:IsInRaidInstance())
+        assert_true(glowShown(SMB))
+    end)
+
+    it("outsideRaid in a battleground, an arena or a scenario: glow", function()
+        for _, instanceType in ipairs({ "pvp", "arena", "scenario" }) do
+            local SMB = fresh({ tracking = gatherer(false), instanceType = instanceType })
+            assert_true(glowShown(SMB), instanceType)
+        end
+    end)
+
+    it("outsideRaid in a raid instance: no glow (and no glow frame)", function()
+        local SMB = fresh({ tracking = gatherer(false), instanceType = "raid" })
+        assert_true(SMB:IsInRaidInstance())
+        assert_true(SMB:HasInactiveTracking(), "the tracking itself is still inactive")
+        assert_false(SMB:ShouldGlowTracker())
+        assert_false(glowShown(SMB))
+        assert_nil(SMB.TrackerGlow, "built only when needed")
+    end)
+
+    it("always in a raid instance: glow", function()
+        local SMB = fresh(withProfile({ TrackerGlowMode = "always" }, { tracking = gatherer(false), instanceType = "raid" }))
+        assert_true(glowShown(SMB))
+    end)
+
+    it("always in the open world and in a dungeon: glow", function()
+        for _, instanceType in ipairs({ "none", "party" }) do
+            local SMB = fresh(withProfile({ TrackerGlowMode = "always" }, { tracking = gatherer(false), instanceType = instanceType }))
+            assert_true(glowShown(SMB), instanceType)
+        end
+    end)
+
+    it("off: no glow anywhere", function()
+        for _, instanceType in ipairs({ "none", "party", "raid", "pvp" }) do
+            local SMB = fresh(withProfile({ TrackerGlowMode = "off" }, { tracking = gatherer(false), instanceType = instanceType }))
+            assert_false(SMB:ShouldGlowTracker(), instanceType)
+            assert_false(glowShown(SMB), instanceType)
+        end
+    end)
+
+    it("an unknown value counts as outsideRaid", function()
+        for _, value in ipairs({ "sometimes", 1, true, false }) do
+            local SMB = fresh(withProfile({ TrackerGlowMode = value }, { tracking = gatherer(false) }))
+            assert_eq(SMB:GetTrackerGlowMode(), "outsideRaid", tostring(value))
+            assert_true(glowShown(SMB), tostring(value) .. ": glow in the open world")
+            SetInstance("raid")
+            FireEvent("ZONE_CHANGED_NEW_AREA")
+            assert_false(glowShown(SMB), tostring(value) .. ": no glow in a raid")
+        end
+    end)
+
+    it("the option switches at once: off hides, always shows (also in a raid), outsideRaid hides there", function()
+        local SMB = fresh({ tracking = gatherer(false), instanceType = "raid" })
+        assert_false(glowShown(SMB))
+        optionSet("always")
+        assert_eq(SMB.db.TrackerGlowMode, "always")
+        assert_true(glowShown(SMB), "always: at once, no reload")
+        optionSet("off")
+        assert_false(glowShown(SMB), "off: gone at once")
+        optionSet("always")
+        assert_true(glowShown(SMB))
+        optionSet("outsideRaid")
+        assert_false(glowShown(SMB), "outsideRaid in a raid: gone at once")
+        assert_eq(STUB.popups, {}, "no reload dialog")
+    end)
+
+    it("ZONE_CHANGED_NEW_AREA reads the instance again (a change without a loading screen)", function()
+        local SMB = fresh({ tracking = gatherer(false), instanceType = "raid" })
+        assert_false(glowShown(SMB))
+        SetInstance("none")
+        FireEvent("ZONE_CHANGED_NEW_AREA")
+        assert_true(glowShown(SMB), "left the raid: the glow comes back")
+        SetInstance("raid")
+        FireEvent("ZONE_CHANGED_NEW_AREA")
+        assert_false(glowShown(SMB), "in the raid again")
+    end)
+
+    it("PLAYER_ENTERING_WORLD reads the instance again (loading screen)", function()
+        local SMB = fresh({ tracking = gatherer(false) })
+        assert_true(glowShown(SMB))
+        SetInstance("raid")
+        FireEvent("PLAYER_ENTERING_WORLD", false, false)
+        assert_false(glowShown(SMB), "entered a raid")
+        SetInstance("none")
+        FireEvent("PLAYER_ENTERING_WORLD", false, false)
+        assert_true(glowShown(SMB), "left it")
+    end)
+
+    it("without IsInInstance: counts as the open world, no error", function()
+        local SMB = fresh({ tracking = gatherer(false), noIsInInstance = true })
+        assert_nil(IsInInstance)
+        assert_false(SMB:IsInRaidInstance())
+        assert_true(glowShown(SMB))
+        FireEvent("ZONE_CHANGED_NEW_AREA")
+        assert_true(glowShown(SMB))
+        assert_eq(STUB.errors, {})
+    end)
+
+    it("the other conditions still count in every mode (dead, no gathering ability, Enable off)", function()
+        for _, mode in ipairs({ "always", "outsideRaid" }) do
+            local SMB = fresh(withProfile({ TrackerGlowMode = mode }, { tracking = gatherer(false), dead = true }))
+            assert_false(glowShown(SMB), mode .. ": dead")
+            SMB = fresh(withProfile({ TrackerGlowMode = mode }, { tracking = gatherer(true) }))
+            assert_false(glowShown(SMB), mode .. ": Find Herbs active")
+            SMB = fresh(withProfile({ TrackerGlowMode = mode, Enable = false }, { tracking = gatherer(false) }))
+            assert_false(SMB:ShouldGlowTracker(), mode .. ": Enable off")
+        end
+    end)
+
+    it("an old profile with TrackerGlow = false loads as off (migration, see test_profile)", function()
+        local SMB = fresh(withProfile({ TrackerGlow = false }, { tracking = gatherer(false) }))
+        assert_eq(SMB.db.TrackerGlowMode, "off")
+        assert_false(glowShown(SMB))
     end)
 end)

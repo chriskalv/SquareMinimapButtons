@@ -44,7 +44,8 @@
 	    in combat, where it waits for the end of combat (the original skips it in combat);
 	  - Initialize builds the bar only once;
 	  - a red glow pulses around the tracker button while the character can track something but
-	    no tracking ability is active (db.TrackerGlow; new, after a WeakAura of the owner);
+	    no tracking ability is active (db.TrackerGlowMode: always, only outside of raid instances, or
+	    off; new, after a WeakAura of the owner);
 	  - CheckTexture and SMB.Hider of the original are unused there and left out.
 ]]
 
@@ -743,15 +744,24 @@ end
 -- gathering ability by its spellID or, if the entry has no spellID, by its name compared with
 -- C_Spell.GetSpellName(id) (the client's own spell name, so it works in every language).
 -- No glow while the player is dead or a ghost or has no full control (as in the WeakAura), with
--- db.TrackerGlow or db.Enable off, or without a tracker button. The glow sits on
--- MinimapCluster.Tracking.Button, which is the button in the bar with MoveTracker and Blizzard's
--- button without it. None of these functions has secret returns in WoW Forever (GetTrackingInfo
--- only has SecretArguments = AllowedWhenUntainted, C_Spell.GetSpellName AllowedWhenTainted).
+-- db.Enable off, or without a tracker button.
+-- db.TrackerGlowMode (2026-11-07, replaces the toggle db.TrackerGlow, see SMB:MigrateTrackerGlow in
+-- Core.lua): 'always'; 'outsideRaid' (the default), which shows no glow while the player is in a
+-- raid instance (IsInInstance() returns true and the instance type 'raid'; dungeons, battlegrounds
+-- and the open world still glow), because the owner's ForeverAuras reminder asks to disable tracking
+-- in raids; or 'off'. An unknown value counts as the default. Without IsInInstance the player counts
+-- as outside of a raid. The instance is read again at PLAYER_ENTERING_WORLD (loading screen) and
+-- ZONE_CHANGED_NEW_AREA (a new zone without a loading screen).
+-- The glow sits on MinimapCluster.Tracking.Button, which is the button in the bar with MoveTracker
+-- and Blizzard's button without it. None of these functions has secret returns in WoW Forever
+-- (GetTrackingInfo only has SecretArguments = AllowedWhenUntainted, C_Spell.GetSpellName
+-- AllowedWhenTainted, IsInInstance and the two events carry no secret markings in the API
+-- documentation of the client).
 --------------------------------------------------------------------------------
 
 SMB.TrackerGlowEvents = {
 	'MINIMAP_UPDATE_TRACKING', 'SPELLS_CHANGED', 'PLAYER_DEAD', 'PLAYER_ALIVE', 'PLAYER_UNGHOST',
-	'PLAYER_CONTROL_GAINED', 'PLAYER_CONTROL_LOST',
+	'PLAYER_CONTROL_GAINED', 'PLAYER_CONTROL_LOST', 'ZONE_CHANGED_NEW_AREA',
 } -- and PLAYER_ENTERING_WORLD (SMB:PLAYER_ENTERING_WORLD)
 
 -- Find Herbs, Find Minerals, Find Treasure (Wowhead Forever, 2026-11-07)
@@ -803,9 +813,29 @@ function SMB:HasInactiveTracking()
 	return known > 0
 end
 
+-- db.TrackerGlowMode if it is one of SMB.TrackerGlowModes, otherwise the default
+function SMB:GetTrackerGlowMode()
+	local mode = SMB.db and SMB.db.TrackerGlowMode
+	for _, value in ipairs(SMB.TrackerGlowModes) do
+		if mode == value then return mode end
+	end
+	return SMB.DefaultTrackerGlowMode
+end
+
+-- true while the player is in a raid instance (false without IsInInstance)
+function SMB:IsInRaidInstance()
+	local IsInInstance = _G.IsInInstance
+	if type(IsInInstance) ~= 'function' then return false end
+	local inInstance, instanceType = IsInInstance()
+	return (inInstance and instanceType == 'raid') and true or false
+end
+
 function SMB:ShouldGlowTracker()
 	local db = SMB.db
-	if not (db and db.Enable and db.TrackerGlow) or SMB.blocked then return false end
+	if not (db and db.Enable) or SMB.blocked then return false end
+	local mode = SMB:GetTrackerGlowMode()
+	if mode == 'off' then return false end
+	if mode == 'outsideRaid' and SMB:IsInRaidInstance() then return false end
 	if _G.UnitIsDeadOrGhost and _G.UnitIsDeadOrGhost('player') then return false end
 	if _G.HasFullControl and not _G.HasFullControl() then return false end
 	return SMB:HasInactiveTracking()
