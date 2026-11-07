@@ -8,7 +8,7 @@
 ## SavedVariables: SquareMinimapButtonsDB
 ## IconTexture: Interface\Icons\INV_Misc_Map_01
 ## AddonCompartmentFunc: SquareMinimapButtons_OnAddonCompartmentClick
-## X-Website: https://github.com/chriskalv/ZippyAddOns
+## X-Website: https://github.com/chriskalv/SquareMinimapButtons
 ## X-License: see LICENSE.txt (ProjectAzilroka License, with permission) and Libs\Ace3\LICENSE.txt
 
 Libs\embeds.xml

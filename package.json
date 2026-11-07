@@ -1,7 +1,7 @@
 {
-  "name": "zippyaddons",
+  "name": "squareminimapbuttons",
   "private": true,
-  "description": "Zippy's addons for WoW Forever; development tools (Lua test runner, release zips). Not part of any addon release.",
+  "description": "Square Minimap Buttons for WoW Forever; development tools (Lua test runner, release zip). Not part of the addon release.",
   "scripts": {
     "test": "node tools/addon_test.mjs SquareMinimapButtons && node --test tests/release.test.mjs",
     "release:smb": "node tools/release.mjs SquareMinimapButtons"
