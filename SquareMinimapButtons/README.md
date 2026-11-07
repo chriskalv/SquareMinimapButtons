@@ -60,7 +60,7 @@ If ProjectAzilroka is loaded at the same time and its Square Minimap Buttons mod
 
 ## Installation
 
-1. Download `SquareMinimapButtons-<version>.zip` from the [Releases](https://github.com/chriskalv/SquareMinimapButtons/releases) page of this repository; it appears there with the first release.
+1. Download `SquareMinimapButtons-<version>-forever.zip` from the [Releases](https://github.com/chriskalv/SquareMinimapButtons/releases) page of this repository; it appears there with the first release.
 2. Extract it into the `Interface\AddOns` folder of your WoW Forever installation, so that `Interface\AddOns\SquareMinimapButtons\SquareMinimapButtons.toc` exists. The folder name must stay `SquareMinimapButtons`.
 3. Restart the game and enable **Square Minimap Buttons** in the addon list.
 

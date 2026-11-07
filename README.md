@@ -6,7 +6,7 @@ The addon itself is the folder [`SquareMinimapButtons/`](SquareMinimapButtons/);
 
 ## Install
 
-1. Download `SquareMinimapButtons-<version>.zip` from the [Releases](https://github.com/chriskalv/SquareMinimapButtons/releases) page (until the first release, copy the folder `SquareMinimapButtons` of this repository instead).
+1. Download `SquareMinimapButtons-<version>-forever.zip` from the [Releases](https://github.com/chriskalv/SquareMinimapButtons/releases) page (until the first release, copy the folder `SquareMinimapButtons` of this repository instead).
 2. Extract it into the `Interface\AddOns` folder of your WoW installation, so that `Interface\AddOns\SquareMinimapButtons\SquareMinimapButtons.toc` exists.
 3. Restart the game and enable **Square Minimap Buttons** in the addon list. `/smb` opens the options (also `/squareminimap` and `/squareminimapbuttons`).
 
@@ -22,7 +22,7 @@ npm test
 npm run release:smb
 ```
 
-`npm test` runs the Lua tests with `tools/addon_test.mjs` (TOC and XML files resolved, every Lua file checked as Lua 5.1, then the tests in `tests/SquareMinimapButtons/`) and the tests of the release script in `tests/release.test.mjs`. `npm run release:smb` writes `dist/SquareMinimapButtons-<version>.zip` with `tools/release.mjs`: the version from the TOC, the addon folder as the only root, no development files.
+`npm test` runs the Lua tests with `tools/addon_test.mjs` (TOC and XML files resolved, every Lua file checked as Lua 5.1, then the tests in `tests/SquareMinimapButtons/`) and the tests of the release script in `tests/release.test.mjs`. `npm run release:smb` writes `dist/SquareMinimapButtons-<version>-forever.zip` and `dist/release.json` with `tools/release.mjs`: the version from the TOC, the addon folder as the only root of the zip, no development files; the release.json follows the format of the BigWigs packager (name, version, file name of the zip, flavor `forever` and the interface number from the TOC line `## Interface-Forever:`). Upload both files together as the assets of the GitHub release: since 2026-11-07 the owner wants the release asset to keep the name `…-<version>-forever.zip` and the matching release.json next to it, so that addon managers keep detecting updates reliably.
 
 Until 2026-11-07 the addon lived in the repository ZippyAddOns next to ZippyMedia; the history of its files was carried over.
 
