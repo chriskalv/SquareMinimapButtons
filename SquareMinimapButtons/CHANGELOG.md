@@ -7,7 +7,7 @@
 
 ## 1.0.0 (2026-11-07)
 
-First version: the *Square Minimap Buttons* module of ProjectAzilroka by Azilroka as a standalone addon for WoW Forever (Interface 16001), ported with Azilroka's permission. Details are in [`README.md`](README.md).
+First version: the *Square Minimap Buttons* module of ProjectAzilroka by Azilroka as a standalone addon for WoW Forever (Interface 16001). Details are in [`README.md`](README.md).
 
 - **Scan and skin**: collects the buttons of other addons from the minimap (on entering the world, every 6 seconds and with `/smb scan`, not in combat or pet battles), skips ProjectAzilroka's fixed ignore list, map pins and unnamed buttons without an icon, and skins the buttons square with cropped icons, backdrop and, with AddOnSkins, ElvUI or Tukui, shadows.
 - **Bar**: lays the buttons out in rows (default one column of 18 px buttons without spacing), with backdrop, strata and level, fading on mouse-over; anchored inside the top left corner of the minimap.
