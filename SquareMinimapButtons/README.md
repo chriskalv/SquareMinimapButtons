@@ -2,7 +2,7 @@
 
 Port of the *Square Minimap Buttons* module of [ProjectAzilroka](https://github.com/Azilroka/ProjectAzilroka) by Azilroka to **WoW Forever** (Interface 16001), as a standalone addon, with Azilroka's permission. It collects the minimap buttons of other addons into a bar and skins them square, like the original module.
 
-> **Version 1.0.0.** Functionally complete; the first release waits for the checks in the WoW Forever client listed below (see [Known limits and client checks](#known-limits-and-client-checks)). Changes per version are in [`CHANGELOG.md`](CHANGELOG.md).
+> **Version 1.0.1.** On GitHub since 1.0.0 (2026-11-07, [Releases](https://github.com/chriskalv/SquareMinimapButtons/releases)); the checks in the WoW Forever client listed below continue (see [Known limits and client checks](#known-limits-and-client-checks)). Changes per version are in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## What it does
 

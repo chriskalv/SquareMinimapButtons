@@ -6,7 +6,7 @@ The addon itself is the folder [`SquareMinimapButtons/`](SquareMinimapButtons/);
 
 ## Install
 
-1. Download `SquareMinimapButtons-<version>-forever.zip` from the [Releases](https://github.com/chriskalv/SquareMinimapButtons/releases) page (until the first release, copy the folder `SquareMinimapButtons` of this repository instead).
+1. Download `SquareMinimapButtons-<version>-forever.zip` from the [Releases](https://github.com/chriskalv/SquareMinimapButtons/releases) page.
 2. Extract it into the `Interface\AddOns` folder of your WoW installation, so that `Interface\AddOns\SquareMinimapButtons\SquareMinimapButtons.toc` exists.
 3. Restart the game and enable **Square Minimap Buttons** in the addon list. `/smb` opens the options (also `/squareminimap` and `/squareminimapbuttons`).
 

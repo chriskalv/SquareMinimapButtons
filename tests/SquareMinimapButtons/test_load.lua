@@ -56,7 +56,7 @@ describe("load order", function()
         assert_eq(ADDON_TOC["Interface-Forever"], "16001")
         assert_eq(ADDON_TOC["Title"], "Square Minimap Buttons")
         assert_eq(ADDON_TOC["Author"], "Azilroka (original), Zippy (WoW Forever port)")
-        assert_eq(ADDON_TOC["Version"], "1.0.0")
+        assert_eq(ADDON_TOC["Version"], "1.0.1")
         assert_eq(ADDON_TOC["OptionalDeps"], "ElvUI, Tukui, AddOnSkins")
         assert_eq(ADDON_TOC["SavedVariables"], "SquareMinimapButtonsDB")
         assert_eq(ADDON_TOC["AddonCompartmentFunc"], "SquareMinimapButtons_OnAddonCompartmentClick")
@@ -73,7 +73,7 @@ describe("addon object", function()
         for _, method in ipairs({ "RegisterEvent", "ScheduleTimer", "ScheduleRepeatingTimer", "SecureHook", "RegisterChatCommand" }) do
             assert_eq(type(SMB[method]), "function", method .. " embedded")
         end
-        assert_eq(SMB.Version, "1.0.0", "version from the TOC")
+        assert_eq(SMB.Version, "1.0.1", "version from the TOC")
     end)
 end)
 
