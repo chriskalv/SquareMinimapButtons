@@ -550,6 +550,23 @@ describe("mode: always, only outside of raid instances, off (nachtrag 4)", funct
         assert_eq(STUB.errors, {})
     end)
 
+    it("a raid needs both halves: inInstance false or instanceType nil means no raid", function()
+        local SMB = fresh({ tracking = gatherer(false) })
+        IsInInstance = function() return false, "raid" end
+        FireEvent("ZONE_CHANGED_NEW_AREA")
+        assert_false(SMB:IsInRaidInstance(), "false, 'raid'")
+        assert_true(glowShown(SMB), "false, 'raid': glow")
+        IsInInstance = function() return true, nil end
+        FireEvent("ZONE_CHANGED_NEW_AREA")
+        assert_false(SMB:IsInRaidInstance(), "true, nil")
+        assert_true(glowShown(SMB), "true, nil: glow")
+        IsInInstance = function() return true, "raid" end
+        FireEvent("ZONE_CHANGED_NEW_AREA")
+        assert_true(SMB:IsInRaidInstance(), "true, 'raid'")
+        assert_false(glowShown(SMB), "true, 'raid': no glow")
+        assert_eq(STUB.errors, {})
+    end)
+
     it("the other conditions still count in every mode (dead, no gathering ability, Enable off)", function()
         for _, mode in ipairs({ "always", "outsideRaid" }) do
             local SMB = fresh(withProfile({ TrackerGlowMode = mode }, { tracking = gatherer(false), dead = true }))
