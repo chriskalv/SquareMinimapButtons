@@ -184,7 +184,7 @@ function SMB:GetOptions()
 	}
 	Blizzard.args.TrackerGlow = {
 		type = 'toggle', name = L['Glowing Tracker Icon when not tracking'], order = 6, width = 'full',
-		desc = L['A red glow pulses around the tracker icon while none of your tracking abilities (for example Find Herbs or Find Minerals) is active. Only takes effect when your character can track something.'],
+		desc = L['A red glow pulses around the tracker icon while none of your gathering tracking abilities (Find Herbs, Find Minerals, Find Treasure) is active. Only takes effect when your character knows one of them.'],
 		set = setTrackerGlow,
 		hidden = function() return SMB.IsClassic end,
 	}

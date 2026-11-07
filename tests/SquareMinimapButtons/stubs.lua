@@ -1015,6 +1015,20 @@ local function installClientState(config)
             if STUB.tracking[index] then STUB.tracking[index].active = on and true or false end
         end,
     }
+    -- Spell names (SpellDocumentation: C_Spell.GetSpellName(spellIdentifier) -> cstring, may return
+    -- nothing). STUB.spellNames maps spell IDs to names (default: the names of the English client
+    -- for the tracking abilities of the tests; config.spellNames replaces the table); an unknown ID
+    -- returns nothing. config.noCSpell = true leaves C_Spell out.
+    if config.noCSpell then
+        C_Spell = nil
+    else
+        C_Spell = {
+            GetSpellName = function(spellID)
+                local name = STUB.spellNames[spellID]
+                if name ~= nil then return name end
+            end,
+        }
+    end
     UnitIsDeadOrGhost = function(unit) return unit == "player" and STUB.dead == true end
     HasFullControl = function() return STUB.control ~= false end
     HasNewMail = function() return STUB.newMail end
@@ -1319,6 +1333,10 @@ function InstallStubs(config)
         textureFileIDs = {}, loggedIn = config.loggedIn == true, combat = config.combat == true,
         petBattle = config.petBattle == true, newMail = config.newMail == true,
         tracking = config.tracking or {}, dead = config.dead == true, control = config.control ~= false,
+        spellNames = config.spellNames or {
+            [2383] = "Find Herbs", [2580] = "Find Minerals", [2481] = "Find Treasure",
+            [5502] = "Sense Undead", [5500] = "Sense Demons", [1494] = "Track Beasts", [19883] = "Track Humanoids",
+        },
     }
     installLuaHelpers()
     installMixins()
@@ -1405,9 +1423,13 @@ end
 -- Tracking entries as C_Minimap.GetTrackingInfo returns them. TRACKING_SPELL(name, active, id) is
 -- a tracking ability (type "spell"), TRACKING_TOWNSFOLK(name, active) a townsfolk filter of the
 -- tracking menu (type "other", no spellID). SetTrackingList replaces the list; fire
--- MINIMAP_UPDATE_TRACKING to tell the addon.
+-- MINIMAP_UPDATE_TRACKING to tell the addon. TRACKING_NAMED(name, active) is a tracking ability whose
+-- entry has no spellID (only its name, type "spell").
 function TRACKING_SPELL(name, active, spellID)
     return { name = name, texture = 136025, active = active == true, type = "spell", subType = 0, spellID = spellID }
+end
+function TRACKING_NAMED(name, active)
+    return { name = name, texture = 136025, active = active == true, type = "spell", subType = 0 }
 end
 function TRACKING_TOWNSFOLK(name, active)
     return { name = name, texture = 136456, active = active == true, type = "other", subType = 1 }

@@ -1,14 +1,20 @@
--- Test group 10 (tracker glow, nachtrag 2): a red glow pulses around the tracker button while the
--- character has tracking abilities and none of them is active; after the owner's WeakAura "Track
--- Herbs/Minerals/etc." (no glow while dead or a ghost or without full control). The tracking entries
--- come from the stubs of C_Minimap.GetNumTrackingTypes and C_Minimap.GetTrackingInfo
--- (MinimapScriptTrackingInfo: name, texture, active, type, subType, spellID).
+-- Test group 10 (tracker glow, nachtrag 2 and 3): a red glow pulses around the tracker button while
+-- the character knows a gathering tracking ability (Find Herbs, Find Minerals, Find Treasure) and none
+-- of them is active; after the owner's WeakAura "Track Herbs/Minerals/etc." (no glow while dead or a
+-- ghost or without full control). The tracking entries come from the stubs of
+-- C_Minimap.GetNumTrackingTypes and C_Minimap.GetTrackingInfo (MinimapScriptTrackingInfo: name,
+-- texture, active, type, subType, spellID), spell names from the stub of C_Spell.GetSpellName.
 
 local FOREVER, RETAIL, CLASSIC = 18, 1, 2
 
+-- Wowhead Forever, 2026-11-07
 local HERBS = 2383
-local MINERALS = 2481
-local TREASURE = 2580
+local MINERALS = 2580
+local TREASURE = 2481
+local SENSE_UNDEAD = 5502
+local SENSE_DEMONS = 5500
+local TRACK_BEASTS = 1494
+local TRACK_HUMANOIDS = 19883
 
 local function fresh(config)
     ReloadAddon(config or {})
@@ -58,7 +64,7 @@ describe("when the glow shows", function()
         assert_false(glowShown(SMB))
     end)
 
-    it("tracking abilities, none active: glow on the tracker button (after login)", function()
+    it("gathering abilities, none active: glow on the tracker button (after login)", function()
         local SMB = fresh({ tracking = gatherer(false) })
         assert_true(SMB:HasInactiveTracking())
         assert_true(glowShown(SMB), "glow at PLAYER_ENTERING_WORLD")
@@ -70,19 +76,67 @@ describe("when the glow shows", function()
         assert_true(glowShown(SMB), "Repair and Flight Master are on, but no ability")
     end)
 
-    it("one ability active: no glow", function()
+    it("Find Herbs known and inactive (alone): glow", function()
+        local SMB = fresh({ tracking = { TRACKING_SPELL("Find Herbs", false, HERBS) } })
+        assert_true(SMB:HasInactiveTracking())
+        assert_true(glowShown(SMB))
+    end)
+
+    it("Find Herbs active: no glow", function()
         local SMB = fresh({ tracking = gatherer(true) })
         assert_false(SMB:HasInactiveTracking())
         assert_false(glowShown(SMB))
     end)
 
-    it("an entry with a spellID counts even without the type spell; a hunter track too", function()
-        local track = TRACKING_SPELL("Track Beasts", false, 1494)
-        track.type = "other"
-        local SMB = fresh({ tracking = { track } })
-        assert_true(SMB:HasInactiveTracking())
-        SetTrackingList({ TRACKING_SPELL("Find Treasure", true, TREASURE), track })
+    it("Find Minerals active, Find Herbs inactive: no glow", function()
+        local list = gatherer(false)
+        list[4].active = true
+        local SMB = fresh({ tracking = list })
         assert_false(SMB:HasInactiveTracking())
+        assert_false(glowShown(SMB))
+    end)
+
+    it("Find Treasure (dwarves) known and inactive: glow; active: no glow", function()
+        local SMB = fresh({ tracking = { TRACKING_SPELL("Find Treasure", false, TREASURE) } })
+        assert_true(SMB:HasInactiveTracking())
+        SetTrackingList({ TRACKING_SPELL("Find Treasure", true, TREASURE) })
+        assert_false(SMB:HasInactiveTracking())
+    end)
+
+    it("Sense Undead active, Find Herbs inactive: glow (no herbs are tracked)", function()
+        local SMB = fresh({ tracking = {
+            TRACKING_TOWNSFOLK("Repair", true),
+            TRACKING_SPELL("Sense Undead", true, SENSE_UNDEAD),
+            TRACKING_SPELL("Find Herbs", false, HERBS),
+        } })
+        assert_true(SMB:HasInactiveTracking())
+        assert_true(glowShown(SMB))
+    end)
+
+    it("only Sense Undead known (a paladin without a gathering profession): never a glow", function()
+        local SMB = fresh({ tracking = { TRACKING_SPELL("Sense Undead", false, SENSE_UNDEAD) } })
+        assert_false(SMB:HasInactiveTracking())
+        assert_false(glowShown(SMB))
+        SetTrackingList({ TRACKING_SPELL("Sense Undead", true, SENSE_UNDEAD) })
+        FireEvent("MINIMAP_UPDATE_TRACKING")
+        assert_false(glowShown(SMB))
+    end)
+
+    it("only hunter tracks and Sense Demons, none active: no glow", function()
+        local SMB = fresh({ tracking = {
+            TRACKING_SPELL("Track Beasts", false, TRACK_BEASTS),
+            TRACKING_SPELL("Track Humanoids", false, TRACK_HUMANOIDS),
+            TRACKING_SPELL("Sense Demons", false, SENSE_DEMONS),
+        } })
+        assert_false(SMB:HasInactiveTracking())
+        assert_false(glowShown(SMB))
+    end)
+
+    it("a gathering entry with its spellID counts without the type spell", function()
+        local herbs = TRACKING_SPELL("Find Herbs", false, HERBS)
+        herbs.type = "other"
+        local SMB = fresh({ tracking = { herbs } })
+        assert_true(SMB:HasInactiveTracking())
     end)
 
     it("dead or a ghost: no glow; alive again: glow", function()
@@ -157,6 +211,68 @@ describe("when the glow shows", function()
     end)
 end)
 
+describe("which entries count (SMB:TrackingEntryMatches)", function()
+    it("SMB.TrackerGlowSpells: Find Herbs, Find Minerals, Find Treasure", function()
+        local SMB = fresh({ tracking = {} })
+        assert_eq(SMB.TrackerGlowSpells, { 2383, 2580, 2481 })
+    end)
+
+    it("by spellID: the same ID matches, another ID does not (also not by name)", function()
+        local SMB = fresh({ tracking = {} })
+        assert_true(SMB:TrackingEntryMatches(TRACKING_SPELL("Find Herbs", false, HERBS), HERBS))
+        assert_false(SMB:TrackingEntryMatches(TRACKING_SPELL("Find Herbs", false, MINERALS), HERBS))
+        assert_false(SMB:TrackingEntryMatches(TRACKING_SPELL("Sense Undead", false, SENSE_UNDEAD), HERBS))
+    end)
+
+    it("an entry without spellID whose name is GetSpellName(2383): counts (glow)", function()
+        local SMB = fresh({ tracking = { TRACKING_NAMED("Find Herbs", false) } })
+        assert_true(SMB:TrackingEntryMatches(STUB.tracking[1], HERBS))
+        assert_true(SMB:HasInactiveTracking())
+        assert_true(glowShown(SMB))
+        STUB.tracking[1].active = true
+        FireEvent("MINIMAP_UPDATE_TRACKING")
+        assert_false(glowShown(SMB))
+    end)
+
+    it("the name comes from the client, so it works in other languages", function()
+        local SMB = fresh({ locale = "deDE", spellNames = { [HERBS] = "Kräutersuche" },
+            tracking = { TRACKING_NAMED("Kräutersuche", false) } })
+        assert_true(SMB:HasInactiveTracking())
+        assert_true(glowShown(SMB))
+    end)
+
+    it("an entry without spellID and another name: does not count", function()
+        local SMB = fresh({ tracking = { TRACKING_NAMED("Sense Undead", false), TRACKING_NAMED("Herbs", false) } })
+        assert_false(SMB:IsGatheringTracking(STUB.tracking[1]))
+        assert_false(SMB:IsGatheringTracking(STUB.tracking[2]))
+        assert_false(SMB:HasInactiveTracking())
+        assert_false(glowShown(SMB))
+    end)
+
+    it("GetSpellName returns nothing: no match and no error", function()
+        local SMB = fresh({ spellNames = {}, tracking = { TRACKING_NAMED("Find Herbs", false) } })
+        assert_false(SMB:TrackingEntryMatches(STUB.tracking[1], HERBS))
+        assert_false(SMB:HasInactiveTracking())
+        assert_false(glowShown(SMB))
+        assert_eq(STUB.errors, {})
+    end)
+
+    it("without C_Spell: entries without spellID do not count, entries with one do; no error", function()
+        local SMB = fresh({ noCSpell = true, tracking = { TRACKING_NAMED("Find Herbs", false) } })
+        assert_false(SMB:HasInactiveTracking())
+        SetTrackingList({ TRACKING_NAMED("Find Herbs", false), TRACKING_SPELL("Find Minerals", false, MINERALS) })
+        assert_true(SMB:HasInactiveTracking())
+        assert_eq(STUB.errors, {})
+    end)
+
+    it("townsfolk filters are still ignored (no spellID, no gathering spell name)", function()
+        local SMB = fresh({ tracking = { TRACKING_TOWNSFOLK("Repair", false), TRACKING_TOWNSFOLK("Banker", false) } })
+        assert_false(SMB:HasInactiveTracking())
+        assert_false(SMB:TrackingEntryMatches(nil, HERBS))
+        assert_false(SMB:TrackingEntryMatches({ active = false }, HERBS), "no name, no spellID")
+    end)
+end)
+
 describe("events", function()
     it("MINIMAP_UPDATE_TRACKING switches the glow on and off", function()
         local SMB = fresh({ tracking = gatherer(false) })
@@ -169,7 +285,7 @@ describe("events", function()
         assert_true(glowShown(SMB))
     end)
 
-    it("SPELLS_CHANGED: a new tracking ability starts the glow", function()
+    it("SPELLS_CHANGED: a new gathering ability starts the glow", function()
         local SMB = fresh({ tracking = {} })
         assert_false(glowShown(SMB))
         SetTrackingList({ TRACKING_SPELL("Find Minerals", false, MINERALS) })

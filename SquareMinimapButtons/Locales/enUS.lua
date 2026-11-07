@@ -39,7 +39,7 @@ L['WoW Forever port:'] = true
 -- WoW Forever port: Blizzard tab
 L["Disabled while ElvUI's queue status mover is active."] = true
 L['Glowing Tracker Icon when not tracking'] = true
-L['A red glow pulses around the tracker icon while none of your tracking abilities (for example Find Herbs or Find Minerals) is active. Only takes effect when your character can track something.'] = true
+L['A red glow pulses around the tracker icon while none of your gathering tracking abilities (Find Herbs, Find Minerals, Find Treasure) is active. Only takes effect when your character knows one of them.'] = true
 
 -- WoW Forever port: guard against ProjectAzilroka
 L['ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled, so this addon stays inactive. Disable one of the two to avoid conflicts.'] = true

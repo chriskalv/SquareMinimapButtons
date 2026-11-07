@@ -732,22 +732,29 @@ end
 
 --------------------------------------------------------------------------------
 -- Tracker glow (new in this port, after the owner's WeakAura "Track Herbs/Minerals/etc.")
--- A red glow pulses around the tracker button while the character has tracking abilities (Find
--- Herbs, Find Minerals, Find Treasure, the hunter's tracks, Sense Undead and so on) and none of them
--- is active. C_Minimap.GetTrackingInfo also lists the townsfolk and quest filters of the tracking
--- menu (Blizzard_Minimap: OPTIONAL_FILTERS, ALWAYS_ON_FILTERS); only the entries of tracking
--- abilities count (type "spell" or a spellID), as in the WeakAura, which read GetTrackingTexture().
+-- A red glow pulses around the tracker button while the character knows one of the gathering
+-- tracking abilities (SMB.TrackerGlowSpells: Find Herbs, Find Minerals, Find Treasure) and none of
+-- them is active; the WeakAura loaded only with these three spells. Other tracking abilities (the
+-- hunter's tracks, Sense Undead, Sense Demons) neither start nor end the glow: in WoW Forever only one
+-- tracking ability is active at a time, so a herbalist with Sense Undead on sees the glow.
+-- C_Minimap.GetTrackingInfo also lists the townsfolk and quest filters of the tracking menu
+-- (Blizzard_Minimap: OPTIONAL_FILTERS, ALWAYS_ON_FILTERS); they do not count. An entry belongs to a
+-- gathering ability by its spellID or, if the entry has no spellID, by its name compared with
+-- C_Spell.GetSpellName(id) (the client's own spell name, so it works in every language).
 -- No glow while the player is dead or a ghost or has no full control (as in the WeakAura), with
 -- db.TrackerGlow or db.Enable off, or without a tracker button. The glow sits on
 -- MinimapCluster.Tracking.Button, which is the button in the bar with MoveTracker and Blizzard's
--- button without it. None of the tracking functions has secret returns in WoW Forever
--- (GetTrackingInfo only has SecretArguments = AllowedWhenUntainted).
+-- button without it. None of these functions has secret returns in WoW Forever (GetTrackingInfo
+-- only has SecretArguments = AllowedWhenUntainted, C_Spell.GetSpellName AllowedWhenTainted).
 --------------------------------------------------------------------------------
 
 SMB.TrackerGlowEvents = {
 	'MINIMAP_UPDATE_TRACKING', 'SPELLS_CHANGED', 'PLAYER_DEAD', 'PLAYER_ALIVE', 'PLAYER_UNGHOST',
 	'PLAYER_CONTROL_GAINED', 'PLAYER_CONTROL_LOST',
 } -- and PLAYER_ENTERING_WORLD (SMB:PLAYER_ENTERING_WORLD)
+
+-- Find Herbs, Find Minerals, Find Treasure (Wowhead Forever, 2026-11-07)
+SMB.TrackerGlowSpells = { 2383, 2580, 2481 }
 
 SMB.TrackerGlowColor = { 1, 0, 0 }
 SMB.TrackerGlowSize = 2 -- thickness of the edges; they lie just outside the button
@@ -758,21 +765,41 @@ function SMB:GetTrackerButton()
 	return type(Tracking) == 'table' and Tracking.Button or nil
 end
 
--- true if the character has tracking abilities and none of them is active
+-- true if the tracking entry info belongs to the spell spellID: by its spellID, or, for an entry
+-- without spellID, by its name (C_Spell.GetSpellName may return nothing: then no match)
+function SMB:TrackingEntryMatches(info, spellID)
+	if type(info) ~= 'table' then return false end
+	if info.spellID ~= nil then return info.spellID == spellID end
+	if info.name == nil then return false end
+	local C_Spell = _G.C_Spell
+	if not (C_Spell and C_Spell.GetSpellName) then return false end
+	local name = C_Spell.GetSpellName(spellID)
+	return name ~= nil and name ~= '' and info.name == name
+end
+
+-- true if the tracking entry info belongs to one of the gathering abilities (SMB.TrackerGlowSpells)
+function SMB:IsGatheringTracking(info)
+	for _, spellID in ipairs(SMB.TrackerGlowSpells) do
+		if SMB:TrackingEntryMatches(info, spellID) then return true end
+	end
+	return false
+end
+
+-- true if the character knows a gathering tracking ability and none of them is active
 function SMB:HasInactiveTracking()
 	local C_Minimap = _G.C_Minimap
 	if not (C_Minimap and C_Minimap.GetNumTrackingTypes and C_Minimap.GetTrackingInfo) then return false end
 	local count = C_Minimap.GetNumTrackingTypes()
 	if type(count) ~= 'number' then return false end
-	local abilities = 0
+	local known = 0
 	for i = 1, count do
 		local info = C_Minimap.GetTrackingInfo(i)
-		if type(info) == 'table' and (info.type == 'spell' or info.spellID ~= nil) then
+		if SMB:IsGatheringTracking(info) then
 			if info.active then return false end
-			abilities = abilities + 1
+			known = known + 1
 		end
 	end
-	return abilities > 0
+	return known > 0
 end
 
 function SMB:ShouldGlowTracker()

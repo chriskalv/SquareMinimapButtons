@@ -40,7 +40,7 @@ L['WoW Forever port:'] = 'Portierung für WoW Forever:'
 -- WoW Forever port: Blizzard tab
 L["Disabled while ElvUI's queue status mover is active."] = 'Gesperrt, solange ElvUIs Mover für den Warteschlangen-Status aktiv ist.'
 L['Glowing Tracker Icon when not tracking'] = 'Tracker-Symbol leuchtet, wenn nichts verfolgt wird'
-L['A red glow pulses around the tracker icon while none of your tracking abilities (for example Find Herbs or Find Minerals) is active. Only takes effect when your character can track something.'] = 'Ein roter Schein pulsiert um das Tracker-Symbol, solange keine Aufspürfähigkeit (etwa Kräutersuche oder Mineraliensuche) aktiv ist. Greift nur, wenn der Charakter etwas verfolgen kann.'
+L['A red glow pulses around the tracker icon while none of your gathering tracking abilities (Find Herbs, Find Minerals, Find Treasure) is active. Only takes effect when your character knows one of them.'] = 'Ein roter Schein pulsiert um das Tracker-Symbol, solange keine Sammel-Aufspürfähigkeit (Kräutersuche, Mineraliensuche, Schatzsuche) aktiv ist. Greift nur, wenn der Charakter eine davon beherrscht.'
 
 -- WoW Forever port: guard against ProjectAzilroka
 L['ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled, so this addon stays inactive. Disable one of the two to avoid conflicts.'] = 'ProjectAzilroka ist geladen und dessen Modul Square Minimap Buttons ist aktiv, deshalb bleibt dieses Addon inaktiv. Deaktiviere eines der beiden, um Konflikte zu vermeiden.'
