@@ -1,16 +1,27 @@
 #!/usr/bin/env node
-// release.mjs: builds the release zip of an addon folder in this repository.
+// release.mjs: builds the release zip and the release.json of an addon folder in this repository.
 //
 // Usage
 //   node tools/release.mjs <AddonFolder> [--out <directory>]    e.g. node tools/release.mjs SquareMinimapButtons
 //   npm run release:smb
 //
-// Writes <out>/<Addon>-<Version>.zip (default out: dist/ in the repository root). <Version> is the
-// "## Version:" line of <AddonFolder>/<Addon>.toc; without it the script stops with an error. The zip
-// has exactly one root folder, <Addon>/, which holds every file of the addon folder (sorted, paths
-// with "/"). Left out at any depth: names starting with a dot, *.zip files and the folders tests/,
-// tools/ and node_modules/ (development files live outside the addon folders; the rule is a safety
-// net). Prints the path of the zip, the number of entries and its size; exit code 1 on any error.
+// Writes <out>/<Addon>-<Version>-forever.zip and <out>/release.json (default out: dist/ in the
+// repository root). <Version> is the "## Version:" line of <AddonFolder>/<Addon>.toc; without it the
+// script stops with an error. The zip has exactly one root folder, <Addon>/, which holds every file of
+// the addon folder (sorted, paths with "/"). Left out at any depth: names starting with a dot, *.zip
+// files and the folders tests/, tools/ and node_modules/ (development files live outside the addon
+// folders; the rule is a safety net). Prints the path of the zip, the number of entries and its size,
+// then the path of the release.json; exit code 1 on any error.
+//
+// release.json: addon managers for WoW Forever detect updates through the release.json that the
+// BigWigs packager attaches to GitHub releases, and they match the asset by its name. Upload the zip
+// and the release.json together as the assets of the GitHub release. The file is compact JSON with a
+// final line break, with exactly these keys in this order:
+//   {"releases":[{"name":"<Addon>","version":"<Version>","filename":"<Addon>-<Version>-forever.zip",
+//     "nolib":false,"metadata":[{"flavor":"forever","interface":<Interface>}]}]}
+// <Interface> is the number of the TOC line "## Interface-Forever:", or of "## Interface:" when that
+// line is missing; a missing line or a value that is not a number is an error, as is a missing
+// version. An existing release.json in the output folder is overwritten: it belongs to exactly one zip.
 //
 // Format: ZIP as described in PKWARE's APPNOTE.TXT (.ZIP File Format Specification), written by this
 // script with Node's built-in modules only, no external zip program:
@@ -67,11 +78,15 @@ export function crc32(buffer) {
 // TOC and files
 // ---------------------------------------------------------------------------------------------
 
-export function readVersion(addonDir) {
-  const name = path.basename(addonDir);
-  const tocPath = path.join(addonDir, `${name}.toc`);
+// Returns { tocPath, text } of <addonDir>/<Addon>.toc, without a byte order mark.
+function readToc(addonDir) {
+  const tocPath = path.join(addonDir, `${path.basename(addonDir)}.toc`);
   if (!fs.existsSync(tocPath)) throw new Error(`no TOC file: ${tocPath}`);
-  const text = fs.readFileSync(tocPath, 'utf8').replace(/^﻿/, '');
+  return { tocPath, text: fs.readFileSync(tocPath, 'utf8').replace(/^\uFEFF/, '') };
+}
+
+export function readVersion(addonDir) {
+  const { tocPath, text } = readToc(addonDir);
   const match = /^##\s*Version\s*:\s*(.*?)\s*$/m.exec(text);
   if (!match || match[1] === '') throw new Error(`no "## Version:" line in ${tocPath}`);
   const version = match[1];
@@ -79,6 +94,33 @@ export function readVersion(addonDir) {
     throw new Error(`version "${version}" in ${tocPath} is not usable in a file name`);
   }
   return version;
+}
+
+// Interface number for the release.json: "## Interface-Forever:" first, then "## Interface:".
+export function readInterface(addonDir) {
+  const { tocPath, text } = readToc(addonDir);
+  for (const key of ['Interface-Forever', 'Interface']) {
+    const match = new RegExp(`^##\\s*${key}\\s*:\\s*(.*?)\\s*$`, 'm').exec(text);
+    if (!match) continue;
+    if (!/^\d+$/.test(match[1])) throw new Error(`"## ${key}:" in ${tocPath} is not a number: "${match[1]}"`);
+    return Number(match[1]);
+  }
+  throw new Error(`no "## Interface-Forever:" or "## Interface:" line in ${tocPath}`);
+}
+
+// The release.json of the BigWigs packager for one zip, as an object in key order.
+export function releaseInfo(addon, version, zipName, interfaceNumber) {
+  return {
+    releases: [
+      {
+        name: addon,
+        version,
+        filename: zipName,
+        nolib: false,
+        metadata: [{ flavor: 'forever', interface: interfaceNumber }],
+      },
+    ],
+  };
 }
 
 export function isExcluded(name, isDirectory) {
@@ -208,12 +250,13 @@ export function buildZip(entries) {
 // Release
 // ---------------------------------------------------------------------------------------------
 
-// Returns { zipPath, entries (number), size (bytes), version, names }.
+// Returns { zipPath, entries (number), size (bytes), version, names, releaseJsonPath, releaseJson }.
 export function release(addonDir, outDir = path.join(repoRoot, 'dist')) {
   const dir = path.resolve(addonDir);
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new Error(`not a folder: ${dir}`);
   const addon = path.basename(dir);
   const version = readVersion(dir);
+  const interfaceNumber = readInterface(dir);
 
   const entries = [{ name: `${addon}/`, isDirectory: true, mtime: fs.statSync(dir).mtime }];
   for (const file of collectFiles(dir)) {
@@ -228,9 +271,21 @@ export function release(addonDir, outDir = path.join(repoRoot, 'dist')) {
 
   const zip = buildZip(entries);
   fs.mkdirSync(outDir, { recursive: true });
-  const zipPath = path.join(outDir, `${addon}-${version}.zip`);
+  const zipName = `${addon}-${version}-forever.zip`;
+  const zipPath = path.join(outDir, zipName);
   fs.writeFileSync(zipPath, zip);
-  return { zipPath, entries: entries.length, size: zip.length, version, names: entries.map((e) => e.name) };
+  const releaseJson = releaseInfo(addon, version, zipName, interfaceNumber);
+  const releaseJsonPath = path.join(outDir, 'release.json');
+  fs.writeFileSync(releaseJsonPath, `${JSON.stringify(releaseJson)}\n`);
+  return {
+    zipPath,
+    entries: entries.length,
+    size: zip.length,
+    version,
+    names: entries.map((e) => e.name),
+    releaseJsonPath,
+    releaseJson,
+  };
 }
 
 function parseArgs(argv) {
@@ -261,7 +316,9 @@ export function main(argv, log = console.log, logError = console.error) {
     if (!fs.existsSync(addonDir)) addonDir = path.resolve(repoRoot, addon);
     const outDir = out ? path.resolve(out) : path.join(repoRoot, 'dist');
     const result = release(addonDir, outDir);
-    log(`${path.relative(process.cwd(), result.zipPath) || result.zipPath}: ${result.entries} entries, ${result.size} bytes`);
+    const shown = (file) => path.relative(process.cwd(), file) || file;
+    log(`${shown(result.zipPath)}: ${result.entries} entries, ${result.size} bytes`);
+    log(shown(result.releaseJsonPath));
     return 0;
   } catch (e) {
     logError(`release: ${e.message}`);

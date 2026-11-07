@@ -3,7 +3,9 @@
 // Builds the release zip of SquareMinimapButtons into a temporary directory and reads it back with a
 // small zip reader of its own (end of central directory, central directory headers, local file
 // headers, inflate, CRC-32 and sizes), independent of the writer in tools/release.mjs. The CRC-32
-// here comes from zlib.crc32, the version from an own read of the TOC.
+// here comes from zlib.crc32, the version and the interface from an own read of the TOC. The
+// release.json next to the zip is compared as text against the expected string, so that the key
+// order and the types (interface a number, nolib a boolean) count as well.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -31,6 +33,33 @@ function tocVersion(dir) {
   const match = /^## Version: (\S+)\s*$/m.exec(text);
   assert.ok(match, 'the TOC has a version');
   return match[1];
+}
+
+// "## Interface-Forever:" of the TOC (the real TOC has it).
+function tocInterfaceForever(dir) {
+  const text = fs.readFileSync(path.join(dir, `${path.basename(dir)}.toc`), 'utf8');
+  const match = /^## Interface-Forever: (\d+)\s*$/m.exec(text);
+  assert.ok(match, 'the TOC has an Interface-Forever line');
+  return match[1];
+}
+
+// The release.json expected for one zip, written out by hand as text.
+function expectedReleaseJson(name, version, interfaceNumber) {
+  return (
+    `{"releases":[{"name":"${name}","version":"${version}","filename":"${name}-${version}-forever.zip",` +
+    `"nolib":false,"metadata":[{"flavor":"forever","interface":${interfaceNumber}}]}]}\n`
+  );
+}
+
+// A copy of the addon folder whose TOC header lines are replaced by `header` (the file list stays).
+function addonWithHeader(t, header) {
+  const work = tempDir(t);
+  const copy = path.join(work, ADDON);
+  fs.cpSync(addonDir, copy, { recursive: true });
+  const tocPath = path.join(copy, `${ADDON}.toc`);
+  const body = fs.readFileSync(tocPath, 'utf8').split('\n').filter((line) => !line.startsWith('## ')).join('\n');
+  fs.writeFileSync(tocPath, `${header}${body}`);
+  return { work, copy };
 }
 
 // Files of a folder as on disk: relative paths with "/" -> absolute paths.
@@ -138,7 +167,8 @@ test('release zip of SquareMinimapButtons: one root folder, every addon file, no
   const version = tocVersion(addonDir);
   const result = release(addonDir, out);
 
-  assert.equal(path.basename(result.zipPath), `${ADDON}-${version}.zip`, 'file name carries the TOC version');
+  assert.equal(path.basename(result.zipPath), `${ADDON}-${version}-forever.zip`, 'file name carries the TOC version and -forever');
+  assert.equal(path.dirname(result.zipPath), out, 'zip in the output folder');
   assert.equal(result.version, version);
   const buffer = fs.readFileSync(result.zipPath);
   assert.equal(result.size, buffer.length);
@@ -183,6 +213,73 @@ test('release zip of SquareMinimapButtons: one root folder, every addon file, no
     assert.equal(files.get(rel).size, content.length, `size of ${rel}`);
     assert.ok(files.get(rel).data.equals(content), `content of ${rel}`);
   }
+});
+
+test('release.json next to the zip: packager format, exact text and key order', (t) => {
+  const out = tempDir(t);
+  const version = tocVersion(addonDir);
+  const interfaceNumber = tocInterfaceForever(addonDir);
+  assert.equal(interfaceNumber, '16001', 'the real TOC targets WoW Forever 16001');
+  const result = release(addonDir, out);
+
+  assert.equal(result.releaseJsonPath, path.join(out, 'release.json'), 'release.json in the output folder');
+  assert.ok(fs.existsSync(result.releaseJsonPath), 'release.json is written');
+  const text = fs.readFileSync(result.releaseJsonPath, 'utf8');
+  assert.equal(text, expectedReleaseJson(ADDON, version, interfaceNumber), 'exact text, compact, final line break');
+
+  const parsed = JSON.parse(text);
+  assert.deepEqual(Object.keys(parsed), ['releases']);
+  assert.equal(parsed.releases.length, 1, 'one release');
+  const [entry] = parsed.releases;
+  assert.deepEqual(Object.keys(entry), ['name', 'version', 'filename', 'nolib', 'metadata'], 'key order');
+  assert.equal(entry.name, ADDON, 'name is the folder name');
+  assert.equal(entry.version, version, 'version is the TOC version');
+  assert.equal(entry.filename, path.basename(result.zipPath), 'filename is the name of the zip');
+  assert.equal(entry.nolib, false);
+  assert.equal(entry.metadata.length, 1, 'one metadata entry');
+  assert.deepEqual(Object.keys(entry.metadata[0]), ['flavor', 'interface']);
+  assert.equal(entry.metadata[0].flavor, 'forever');
+  assert.equal(typeof entry.metadata[0].interface, 'number', 'interface is a number');
+  assert.equal(entry.metadata[0].interface, 16001);
+  assert.deepEqual(result.releaseJson, parsed, 'release() returns the written object');
+});
+
+test('release.json takes the interface from "## Interface-Forever:" before "## Interface:"', (t) => {
+  const both = addonWithHeader(t, '## Interface: 11507\n## Interface-Forever: 16002\n## Title: Both\n## Version: 2.3.4\n');
+  const bothResult = release(both.copy, path.join(both.work, 'out'));
+  assert.equal(path.basename(bothResult.zipPath), `${ADDON}-2.3.4-forever.zip`);
+  assert.equal(fs.readFileSync(bothResult.releaseJsonPath, 'utf8'), expectedReleaseJson(ADDON, '2.3.4', 16002), 'Interface-Forever wins');
+
+  const foreverFirst = addonWithHeader(t, '## Interface-Forever: 16003\n## Interface: 11507\n## Version: 2.3.4\n');
+  const foreverFirstResult = release(foreverFirst.copy, path.join(foreverFirst.work, 'out'));
+  assert.equal(foreverFirstResult.releaseJson.releases[0].metadata[0].interface, 16003, 'also when it comes first');
+
+  const plain = addonWithHeader(t, '## Interface: 11508\n## Title: Plain\n## Version: 2.3.5\n');
+  const plainResult = release(plain.copy, path.join(plain.work, 'out'));
+  assert.equal(fs.readFileSync(plainResult.releaseJsonPath, 'utf8'), expectedReleaseJson(ADDON, '2.3.5', 11508), 'without Interface-Forever: Interface');
+});
+
+test('a TOC without an interface line, or with an interface that is no number, is an error', (t) => {
+  const none = addonWithHeader(t, '## Title: No Interface\n## Version: 1.0.0\n');
+  const out = path.join(none.work, 'out');
+  assert.throws(() => release(none.copy, out), /no "## Interface-Forever:" or "## Interface:" line/);
+  const errors = [];
+  const code = main([none.copy, '--out', out], () => {}, (line) => errors.push(line));
+  assert.equal(code, 1);
+  assert.match(errors.join('\n'), /Interface/);
+  assert.ok(!fs.existsSync(out), 'nothing written');
+
+  const text = addonWithHeader(t, '## Interface-Forever: 1.15.7\n## Interface: 11507\n## Version: 1.0.0\n');
+  assert.throws(() => release(text.copy, path.join(text.work, 'out')), /"## Interface-Forever:" .* is not a number/);
+  const list = addonWithHeader(t, '## Interface: 11507, 16001\n## Version: 1.0.0\n');
+  assert.throws(() => release(list.copy, path.join(list.work, 'out')), /"## Interface:" .* is not a number/);
+});
+
+test('an existing release.json in the output folder is overwritten', (t) => {
+  const out = tempDir(t);
+  fs.writeFileSync(path.join(out, 'release.json'), '{"releases":[{"name":"Old"}]}\n');
+  const { releaseJsonPath } = release(addonDir, out);
+  assert.equal(fs.readFileSync(releaseJsonPath, 'utf8'), expectedReleaseJson(ADDON, tocVersion(addonDir), tocInterfaceForever(addonDir)));
 });
 
 test('unzip -tq accepts the zip and lists one root folder', (t) => {
@@ -256,12 +353,22 @@ test('a TOC without a version is an error', (t) => {
   assert.ok(!fs.existsSync(path.join(work, 'out')), 'no zip written');
 });
 
-test('the command line writes the zip into --out', (t) => {
+test('the command line writes the zip and the release.json into --out and prints two lines', (t) => {
   const out = tempDir(t);
   const lines = [];
-  const code = main([addonDir, '--out', out], (line) => lines.push(line), (line) => lines.push(line));
-  assert.equal(code, 0, lines.join('\n'));
-  const zip = path.join(out, `${ADDON}-${tocVersion(addonDir)}.zip`);
-  assert.ok(fs.existsSync(zip));
-  assert.match(lines.join('\n'), /\d+ entries, \d+ bytes/);
+  const errors = [];
+  const code = main([addonDir, '--out', out], (line) => lines.push(line), (line) => errors.push(line));
+  assert.equal(code, 0, errors.join('\n'));
+  assert.deepEqual(errors, []);
+  const version = tocVersion(addonDir);
+  const zip = path.join(out, `${ADDON}-${version}-forever.zip`);
+  const json = path.join(out, 'release.json');
+  assert.ok(fs.existsSync(zip), 'zip written');
+  assert.ok(fs.existsSync(json), 'release.json written');
+  assert.deepEqual(fs.readdirSync(out).sort(), [`${ADDON}-${version}-forever.zip`, 'release.json'], 'nothing else in --out');
+  assert.equal(lines.length, 2, lines.join('\n'));
+  const shown = (file) => path.relative(process.cwd(), file) || file;
+  assert.match(lines[0], /\d+ entries, \d+ bytes$/);
+  assert.ok(lines[0].startsWith(`${shown(zip)}: `), lines[0]);
+  assert.equal(lines[1], shown(json));
 });
