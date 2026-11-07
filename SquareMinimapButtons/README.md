@@ -225,7 +225,7 @@ Checks in the WoW Forever client, once with ElvUI and once without:
 - **Zippy**: port to WoW Forever.
 - **Ace3** (WoWUIDev/Ace3): addon framework, embedded unmodified (commit `ac3d122`).
 
-The code is ported from ProjectAzilroka's module `Modules/SquareMinimapButtons.lua`, the helpers of its core and the option labels of its locales. Azilroka agreed to the port of this part of ProjectAzilroka to WoW Forever (2026-11-05); see `LICENSE.txt`. The addon keeps Azilroka's name for the module and the ProjectAzilroka copyright notice.
+The code is ported from ProjectAzilroka's module `Modules/SquareMinimapButtons.lua`, the helpers of its core and the option labels of its locales. The addon keeps Azilroka's name for the module and the ProjectAzilroka copyright notice.
 
 - Parts taken from ProjectAzilroka: ProjectAzilroka License (copyright notice kept); the license text and the notes on the port are in `LICENSE.txt`.
 - Ace3: BSD license of the Ace3 Development Team, see `Libs/Ace3/LICENSE.txt`.
