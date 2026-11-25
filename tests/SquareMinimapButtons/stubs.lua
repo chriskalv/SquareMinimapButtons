@@ -1490,6 +1490,29 @@ end
 -- Test buttons on the minimap
 --------------------------------------------------------------------------------
 
+-- What the client would draw of a texture, as far as the tests need it: an image (file, atlas or
+-- color), shown together with the frame it belongs to, alpha above 0, at least one anchor and, with
+-- a single anchor, a width and a height above 0; a mask without an image hides the texture. A
+-- texture without anchors is not drawn, whatever its size (the client places nothing it cannot
+-- anchor). Returns false and the reason.
+function RegionDrawn(region)
+    local s = S[region]
+    if not s then return false, "not a stub object" end
+    local hasImage = (s.texture ~= nil and s.texture ~= "") or s.atlas ~= nil or s.colorTexture ~= nil
+    if not hasImage then return false, "no image" end
+    if not s.shown then return false, "hidden" end
+    local parent = s.parent and S[s.parent]
+    if parent and not parent.shown then return false, "frame hidden" end
+    if not (type(s.alpha) == "number" and s.alpha > 0) then return false, "alpha 0" end
+    if #s.points == 0 then return false, "no anchors" end
+    if #s.points == 1 and not (s.width > 0 and s.height > 0) then return false, "one anchor without size" end
+    for _, mask in ipairs(s.masks or {}) do
+        local m = S[mask]
+        if not m or m.texture == nil or m.texture == "" then return false, "empty mask" end
+    end
+    return true
+end
+
 -- Marks a texture whose GetTexCoord returns secret values (see Texture:GetTexCoord).
 function MarkSecretTexCoord(texture)
     st(texture).secretTexCoord = true

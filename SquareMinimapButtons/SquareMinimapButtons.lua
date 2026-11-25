@@ -399,6 +399,12 @@ local function isPlainTexCoord(...)
 	return true
 end
 
+-- true for a secret value (never compared or computed with, see isPlainTexCoord)
+local function isSecret(value)
+	local issecretvalue = _G.issecretvalue
+	return issecretvalue ~= nil and issecretvalue(value) and true or false
+end
+
 -- A MaskTexture is a texture object too (IsObjectType('Texture')), and the skin must never empty,
 -- move or crop it: an emptied mask hides everything it masks. LibDBIcon buttons may carry one, for
 -- example Connoisseur & Restocker masks its icon with the round file 130924, which is also in
@@ -407,6 +413,22 @@ local function isMaskTexture(region)
 	return region.GetObjectType ~= nil and region:GetObjectType() == 'MaskTexture'
 end
 SMB.IsMaskTexture = isMaskTexture
+
+local function isTexture(region)
+	return type(region) == 'table' and region.IsObjectType ~= nil and region:IsObjectType('Texture') and not isMaskTexture(region)
+end
+
+-- The image of a texture: its file ID, else its file path, else its atlas (nil for none; an empty
+-- path counts as none). GetTextureFileID, GetTexture and GetAtlas have no secret marking in WoW
+-- Forever's API documentation (SimpleTextureBaseAPI).
+local function regionImage(region)
+	local texture = region.GetTextureFileID and region:GetTextureFileID() or region.GetTexture and region:GetTexture()
+	if texture ~= nil and texture ~= '' then return texture end
+	local atlas = region.GetAtlas and region:GetAtlas()
+	if atlas ~= nil and atlas ~= '' then return atlas end
+	return nil
+end
+SMB.RegionImage = regionImage
 
 -- Takes the masks off a texture (the square skin needs no round mask, and a mask of another addon
 -- would cut the cropped icon). The masks themselves stay as they are; the addon may keep them.
@@ -428,46 +450,199 @@ function SMB:RemoveMasks(region)
 	return #masks
 end
 
+--------------------------------------------------------------------------------
+-- Protection of skinned textures (1.0.2)
+-- A texture the skin has fitted into a button keeps its place, layer and masks, whatever its addon
+-- calls on it later. Up to 1.0.1 only SetPoint was replaced by a function that does nothing, while
+-- ClearAllPoints stayed real: ItemRack Universal (4.59) clears the points of its LibDBIcon icon and
+-- sets new ones on every change of the equipped set (ItemRack.SetMinimapButtonVisual), so the
+-- icon was left without anchors, and a texture without anchors is not drawn: an empty square.
+--
+-- Locking, not restoring: the methods below become fields that do nothing on the texture object
+-- (as LockButton does for the position of the buttons). A lock has no moment in which the icon is
+-- gone, needs no hook that runs after the foreign call and cannot loop with it. The skin unlocks
+-- (removes the fields again, a field the addon had set itself comes back) while it places the
+-- texture and locks again afterwards. This is done only on textures of the addon buttons the scan
+-- takes; Blizzard's own buttons (mail, tracking, calendar, queue) are never scanned, and nothing of
+-- theirs is replaced (see HandleBlizzardButtons).
+--
+-- Not locked, because the content of the icon belongs to its addon: SetTexture, SetAtlas,
+-- SetTexCoord (LibDBIcon shows the full image while the button is pressed), SetVertexColor, Show,
+-- Hide and SetAlpha (addons fade or hide their icons on purpose). These are hooked instead
+-- (hooksecurefunc on the texture of the addon): after such a call the button is checked again on
+-- the next frame (CheckButton): new textures are skinned, a removed border that comes back is
+-- emptied again, a crop that the addon reset to the full image is restored, and a button without a
+-- visible icon is repaired or gets a replacement image.
+--------------------------------------------------------------------------------
+
+SMB.LockedRegionMethods = { 'ClearAllPoints', 'SetPoint', 'SetAllPoints', 'SetSize', 'SetWidth', 'SetHeight', 'SetDrawLayer', 'SetMask', 'AddMaskTexture' }
+SMB.HookedRegionMethods = { 'SetTexture', 'SetAtlas', 'SetTexCoord', 'Show', 'Hide', 'SetAlpha' }
+
+-- weak tables: region -> button (or true); nothing is written into the regions themselves except the
+-- locked and hooked methods
+local handledRegions = setmetatable({}, { __mode = 'k' }) -- fitted into the button by the skin
+local removedRegions = setmetatable({}, { __mode = 'k' }) -- border, background, highlight: emptied
+local croppedRegions = setmetatable({}, { __mode = 'k' }) -- region -> { l, r, t, b } of the crop
+local hookedRegions = setmetatable({}, { __mode = 'k' })
+local savedMethods = setmetatable({}, { __mode = 'k' }) -- region -> { name = own field or false }
+local skinnedButtons = setmetatable({}, { __mode = 'k' }) -- buttons of other addons the scan took
+local queuedButtons = setmetatable({}, { __mode = 'k' })
+SMB.HandledRegions, SMB.RemovedRegions, SMB.CroppedRegions = handledRegions, removedRegions, croppedRegions
+SMB.SkinnedButtons = skinnedButtons
+
+-- While the skin itself works on textures, the hooks do not queue checks (no loop).
+SMB.working = 0
+
+function SMB:LockRegion(region)
+	local saved = savedMethods[region]
+	if not saved then
+		saved = {}
+		for _, name in ipairs(SMB.LockedRegionMethods) do
+			local own = rawget(region, name)
+			saved[name] = (own ~= nil and own ~= SMB.Noop) and own or false
+		end
+		savedMethods[region] = saved
+	end
+	for _, name in ipairs(SMB.LockedRegionMethods) do
+		region[name] = SMB.Noop
+	end
+end
+
+-- Only a region locked before is unlocked (a region seen for the first time keeps its own fields).
+function SMB:UnlockRegion(region)
+	local saved = savedMethods[region]
+	if not saved then return end
+	for _, name in ipairs(SMB.LockedRegionMethods) do
+		region[name] = saved[name] or nil
+	end
+end
+
+function SMB:IsRegionLocked(region)
+	return rawget(region, 'ClearAllPoints') == SMB.Noop
+end
+
+-- Runs fn(region) with the region unlocked and locks it again afterwards.
+function SMB:WithUnlockedRegion(region, fn)
+	SMB.working = SMB.working + 1
+	SMB:UnlockRegion(region)
+	local ok, err = pcall(fn, region)
+	SMB:LockRegion(region)
+	SMB.working = SMB.working - 1
+	if not ok then _G.geterrorhandler()(err) end
+end
+
+-- Checks the button again on the next frame (once, however many calls come in).
+function SMB:QueueCheck(button)
+	if SMB.working > 0 or queuedButtons[button] then return end
+	queuedButtons[button] = true
+	local C_Timer = _G.C_Timer
+	if not (C_Timer and C_Timer.After) then
+		queuedButtons[button] = nil
+		return
+	end
+	C_Timer.After(0, function()
+		queuedButtons[button] = nil
+		SMB:CheckButton(button)
+	end)
+end
+
+function SMB:HookRegion(button, region)
+	if hookedRegions[region] then return end
+	hookedRegions[region] = true
+	for _, name in ipairs(SMB.HookedRegionMethods) do
+		if type(region[name]) == 'function' then
+			_G.hooksecurefunc(region, name, function() SMB:QueueCheck(button) end)
+		end
+	end
+end
+
+-- Places a texture 1 px inside its frame on the layer ARTWORK, without masks, and locks it.
+function SMB:PlaceRegion(region)
+	SMB:WithUnlockedRegion(region, function()
+		SMB:RemoveMasks(region)
+		region:ClearAllPoints()
+		region:SetDrawLayer('ARTWORK')
+		SMB:SetInside(region)
+		region:SetMask('')
+	end)
+end
+
+function SMB:RemoveRegion(button, region)
+	SMB.working = SMB.working + 1
+	region:SetTexture()
+	region:SetAlpha(0)
+	SMB.working = SMB.working - 1
+	removedRegions[region] = button
+	SMB:HookRegion(button, region)
+end
+
 function SMB:HandleRegion(button, region)
 	-- SkinMinimapButton already skips masks; HandleRegion is public and keeps them out on its own.
 	if isMaskTexture(region) then return end
-	local texture = region.GetTextureFileID and region:GetTextureFileID() or region.GetTexture and region:GetTexture()
+	local texture = regionImage(region)
 	if not texture then return end
 
-	SMB:RemoveMasks(region)
-	region:ClearAllPoints()
-	region:SetDrawLayer('ARTWORK')
-	SMB:SetInside(region)
+	local first = not handledRegions[region]
+	handledRegions[region] = button
+	SMB:PlaceRegion(region)
 
-	region:SetMask('')
+	-- The crop is decided once, when the skin first sees the texture.
+	if first then
+		local ULx, ULy, LLx, LLy, URx, URy, LRx, LRy = region:GetTexCoord()
+		if isPlainTexCoord(ULx, ULy, LLx, LLy, URx, URy, LRx, LRy)
+			and (ULx == 0 and ULy == 0 and LLx == 0 and LLy == 1 and URx == 1 and URy == 0 and LRx == 1 and LRy == 1) then
+			local l, r, t, b = unpack(SpecialTexCoords[button:GetDebugName()] or SMB:TexCoords(true))
+			SMB.working = SMB.working + 1
+			region:SetTexCoord(l, r, t, b)
+			SMB.working = SMB.working - 1
+			croppedRegions[region] = { l, r, t, b }
+			button:HookScript('OnLeave', function() region:SetTexCoord(l, r, t, b) end)
+		end
+	end
 
+	SMB:HookRegion(button, region)
+end
+
+-- A cropped texture whose addon set the full image again gets the crop back.
+local function restoreCrop(region)
+	local crop = croppedRegions[region]
+	if not crop then return end
 	local ULx, ULy, LLx, LLy, URx, URy, LRx, LRy = region:GetTexCoord()
 	if isPlainTexCoord(ULx, ULy, LLx, LLy, URx, URy, LRx, LRy)
 		and (ULx == 0 and ULy == 0 and LLx == 0 and LLy == 1 and URx == 1 and URy == 0 and LRx == 1 and LRy == 1) then
-		local l, r, t, b = unpack(SpecialTexCoords[button:GetDebugName()] or SMB:TexCoords(true))
-		region:SetTexCoord(l, r, t, b)
-		button:HookScript('OnLeave', function() region:SetTexCoord(l, r, t, b) end)
+		SMB.working = SMB.working + 1
+		region:SetTexCoord(crop[1], crop[2], crop[3], crop[4])
+		SMB.working = SMB.working - 1
 	end
-
-	region.SetPoint = SMB.Noop
 end
+
+-- The textures of the button and its direct children (not their children), as the skin of the
+-- original takes them.
+local function eachRegion(button, fn)
+	for _, frame in next, { button, button:GetChildren() } do
+		for _, region in next, { frame:GetRegions() } do
+			fn(region, frame)
+		end
+	end
+end
+SMB.EachRegion = eachRegion
 
 function SMB:SkinMinimapButton(button)
 	if button.isSkinned then return end
 
-	for _, frames in next, { button, button:GetChildren() } do
-		for _, region in next, { frames:GetRegions() } do
-			if region.IsObjectType and region:IsObjectType('Texture') and not isMaskTexture(region) then
-				local texture = region.GetTextureFileID and region:GetTextureFileID() or region.GetTexture and region:GetTexture()
-				if texture and SMB:RemoveTexture(texture) then
-					region:SetTexture()
-					region:SetAlpha(0)
-				else
-					SMB:HandleRegion(button, region)
-				end
+	eachRegion(button, function(region)
+		if isTexture(region) then
+			local texture = regionImage(region)
+			if texture and SMB:RemoveTexture(texture) then
+				SMB:RemoveRegion(button, region)
+			elseif texture then
+				SMB:HandleRegion(button, region)
+			else
+				-- no image yet: skinned once it gets one (CheckButton)
+				SMB:HookRegion(button, region)
 			end
 		end
-	end
+	end)
 
 	local Minimap = _G.Minimap
 	button:SetFrameLevel(Minimap:GetFrameLevel() + 10)
@@ -498,7 +673,138 @@ function SMB:SkinMinimapButton(button)
 	end)
 
 	button.isSkinned = true
+	skinnedButtons[button] = true
 	tinsert(SMB.Buttons, button)
+end
+
+--------------------------------------------------------------------------------
+-- Layouts for buttons that draw more than one icon
+-- An addon that draws its button with several textures side by side cannot be shown by fitting
+-- every texture into the whole square. A layout claims these textures (the generic skin leaves
+-- them alone) and places them itself; apply runs after every check of the button.
+--
+-- ItemRack Universal (LibDBIcon10_ItemRack): in the hybrid state (the set of the active queue and a
+-- detected gear set differ) ItemRack.SetMinimapButtonVisual shows the left half of the first set's
+-- icon on button.icon (TexCoord 0.05-0.5) and the right half of the second set's icon on
+-- button.SplitIcon (0.5-0.95), each 8.5 x 17 px inside LibDBIcon's round inset, with a 1 px gold line
+-- button.Divider between them; otherwise it hides SplitIcon and Divider and shows one icon. In the
+-- square the same split is kept, as ItemRack draws its own square button 20 (SetButton20Visual): the
+-- left half of the inner square for button.icon, the right half for SplitIcon, both with ItemRack's
+-- texture coordinates (a half of the image on a half of the square, so nothing is stretched), and the
+-- line 1 px wide in the middle on OVERLAY. ItemRack's round mask (button.CircleMask) is not added
+-- (AddMaskTexture is locked) or taken off again.
+--------------------------------------------------------------------------------
+
+SMB.ButtonLayouts = SMB.ButtonLayouts or {}
+local splitButtons = setmetatable({}, { __mode = 'k' }) -- buttons whose layout shows a split icon
+
+local function isShownPlain(region)
+	local shown = region:IsShown()
+	if isSecret(shown) then return true end
+	return shown and true or false
+end
+
+SMB.ButtonLayouts.LibDBIcon10_ItemRack = {
+	claims = function(button)
+		local list = {}
+		for _, key in ipairs({ 'SplitIcon', 'Divider' }) do
+			local region = button[key]
+			if isTexture(region) then list[#list + 1] = region end
+		end
+		return list
+	end,
+	apply = function(_, button)
+		local icon, split, divider = button.icon, button.SplitIcon, button.Divider
+		if not (isTexture(icon) and handledRegions[icon]) then return end
+		local hybrid = isTexture(split) and isShownPlain(split) and regionImage(split) ~= nil
+		if not hybrid then
+			-- one icon again: the whole inner square (the generic place)
+			if splitButtons[button] then
+				splitButtons[button] = nil
+				SMB:PlaceRegion(icon)
+			end
+			return
+		end
+		splitButtons[button] = true
+		SMB:WithUnlockedRegion(icon, function()
+			SMB:RemoveMasks(icon)
+			icon:ClearAllPoints()
+			icon:SetDrawLayer('ARTWORK')
+			icon:SetPoint('TOPLEFT', button, 'TOPLEFT', 1, -1)
+			icon:SetPoint('BOTTOMRIGHT', button, 'BOTTOM', 0, 1)
+		end)
+		handledRegions[split] = button
+		SMB:WithUnlockedRegion(split, function()
+			SMB:RemoveMasks(split)
+			split:ClearAllPoints()
+			split:SetDrawLayer('ARTWORK')
+			split:SetPoint('TOPLEFT', button, 'TOP', 0, -1)
+			split:SetPoint('BOTTOMRIGHT', button, 'BOTTOMRIGHT', -1, 1)
+		end)
+		SMB:HookRegion(button, split)
+		if isTexture(divider) then
+			SMB:WithUnlockedRegion(divider, function()
+				divider:ClearAllPoints()
+				divider:SetDrawLayer('OVERLAY', 1)
+				divider:SetPoint('TOP', button, 'TOP', 0, -1)
+				divider:SetPoint('BOTTOM', button, 'BOTTOM', 0, 1)
+				divider:SetWidth(1)
+			end)
+			SMB:HookRegion(button, divider)
+		end
+	end,
+}
+
+function SMB:GetButtonLayout(button)
+	local name = button.GetName and button:GetName()
+	if type(name) ~= 'string' or isSecret(name) then return nil end
+	return SMB.ButtonLayouts[name]
+end
+
+--------------------------------------------------------------------------------
+-- Check of a skinned button: on every scan and on the next frame after its addon changed one of
+-- its textures (see the hooks above). Textures that came after the first skin, or got their image
+-- only later, are skinned now; a removed border or background that the addon set again (for
+-- example LibDBIcon's ResetButtonBorder) is emptied again; a crop the addon reset to the full image
+-- comes back; then the layout of the button, if it has one, places its textures.
+--------------------------------------------------------------------------------
+
+local function checkRegions(button)
+	local layout = SMB:GetButtonLayout(button)
+	local claimed = {}
+	if layout then
+		for _, region in ipairs(layout.claims(button)) do claimed[region] = true end
+	end
+	eachRegion(button, function(region)
+		if not isTexture(region) or claimed[region] then return end
+		local image = regionImage(region)
+		if removedRegions[region] then
+			if image and SMB:RemoveTexture(image) then
+				region:SetTexture()
+				region:SetAlpha(0)
+			end
+		elseif handledRegions[region] then
+			restoreCrop(region)
+		elseif image then
+			if SMB:RemoveTexture(image) then
+				SMB:RemoveRegion(button, region)
+			else
+				SMB:HandleRegion(button, region)
+			end
+		else
+			SMB:HookRegion(button, region)
+		end
+	end)
+	if layout then layout.apply(SMB, button) end
+end
+
+function SMB:CheckButton(button)
+	if not skinnedButtons[button] then return nil end
+	SMB.working = SMB.working + 1
+	local ok, err = pcall(checkRegions, button)
+	SMB.working = SMB.working - 1
+	if not ok then _G.geterrorhandler()(err) end
+	return ok
 end
 
 --------------------------------------------------------------------------------
@@ -533,6 +839,12 @@ function SMB:GrabMinimapButtons(forceUpdate)
 			UpdateBar = true
 			count = count + 1
 		end
+	end
+
+	-- every button the scan took, also the ones skinned earlier (textures that came later, a
+	-- foreign change the hooks did not see)
+	for _, button in ipairs(SMB.Buttons) do
+		if skinnedButtons[button] then SMB:CheckButton(button) end
 	end
 
 	if UpdateBar and SMB.Update then
