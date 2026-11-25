@@ -818,11 +818,8 @@ local function installDefaultUI(config)
                 button:SetScript(name, function(self)
                     self.log[#self.log + 1] = name
                     self[field] = value
-                    -- ButtonStateBehaviorMixin has an empty OnButtonStateChanged as the base; a test
-                    -- that removes the field plays that base here
-                    if type(self.OnButtonStateChanged) == "function" then
-                        self:OnButtonStateChanged()
-                    end
+                    -- no guard, as in ButtonStateBehaviorMixin: the real button always has the method
+                    self:OnButtonStateChanged()
                 end)
             end
             stateScript("OnMouseDown", "down", true)

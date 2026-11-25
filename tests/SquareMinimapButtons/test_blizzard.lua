@@ -518,8 +518,6 @@ describe("tracking icon zoom", function()
         assert_nil(Button.OnButtonStateChanged, "no hook on a missing method")
         assertCoords(Button.StateTexture, ZOOMED, "without OnButtonStateChanged")
         assertCoords(Button.AddTexture, ZOOMED, "without OnButtonStateChanged (AddTexture)")
-        enter(Button)
-        leave(Button)
 
         SMB = fresh()
         Button = MinimapCluster.Tracking.Button
