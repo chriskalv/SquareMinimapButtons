@@ -275,6 +275,22 @@ describe("ItemRack Universal: hybrid (two sets)", function()
         assertSplit(button, "scan at login")
         assert_eq(button.CircleMask:GetTexture(), "Interface\\CharacterFrame\\TempPortraitAlphaMask", "the mask itself stays")
     end)
+
+    it("hybrid before the scan: the gold line is left to the layout and does not count as an icon", function()
+        ReloadAddon({})
+        local button = itemRackButton()
+        itemRackHybrid(button, SET_A, SET_B)
+        StartClient()
+        local SMB = GetAddon()
+        assert_nil(SMB.HandledRegions[button.Divider], "not fitted by the generic skin")
+        assert_eq(button.Divider:GetDrawLayer(), "OVERLAY", "placed by the layout")
+        assert_true(SMB:HasVisibleIcon(button))
+        button.icon:SetTexture()
+        button.SplitIcon:SetTexture()
+        assert_false(SMB:HasVisibleIcon(button), "the line alone is no icon")
+        AdvanceTime(0)
+        assert_true(SMB.FallbackTextures[button] ~= nil and SMB.FallbackTextures[button]:IsShown())
+    end)
 end)
 
 describe("LibDBIcon-1.0 minor 57 (Connoisseur & Restocker ships it)", function()
@@ -432,8 +448,8 @@ describe("other addons of the owner", function()
     end)
 
     it("an own button whose icon fills it and that places itself again when the minimap changes size", function()
-        -- the minimap button of CooldownTimeline3: no LibDBIcon, icon with SetAllPoints, the button
-        -- moved with ClearAllPoints and SetPoint around the minimap on OnSizeChanged
+        -- an own minimap button without LibDBIcon: icon with SetAllPoints, the button moved with
+        -- ClearAllPoints and SetPoint around the minimap on OnSizeChanged
         local SMB = fresh()
         local button = CreateFrame("Button", "OwnRoundButton", Minimap)
         button:SetSize(24, 24)

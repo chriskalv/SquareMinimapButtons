@@ -535,6 +535,7 @@ local hookedRegions = setmetatable({}, { __mode = 'k' })
 local savedMethods = setmetatable({}, { __mode = 'k' }) -- region -> { name = own field or false }
 local skinnedButtons = setmetatable({}, { __mode = 'k' }) -- buttons of other addons the scan took
 local queuedButtons = setmetatable({}, { __mode = 'k' })
+local hookChecks = setmetatable({}, { __mode = 'k' }) -- button -> { since = GetTime(), count = checks queued since }
 local fallbackTextures = setmetatable({}, { __mode = 'k' }) -- button -> replacement texture
 SMB.HandledRegions, SMB.RemovedRegions, SMB.CroppedRegions = handledRegions, removedRegions, croppedRegions
 SMB.SkinnedButtons, SMB.FallbackTextures = skinnedButtons, fallbackTextures
@@ -580,7 +581,13 @@ function SMB:WithUnlockedRegion(region, fn)
 	if not ok then _G.geterrorhandler()(err) end
 end
 
--- Checks the button again on the next frame (once, however many calls come in).
+-- Checks the button again on the next frame (once, however many calls come in). An addon that
+-- animates its icon (SetTexCoord or SetAlpha in OnUpdate) would ask for a check on every frame:
+-- after SMB.HookCheckBurst checks of a button within one second, the next ones wait
+-- SMB.HookCheckInterval seconds each (about five checks per second instead of one per frame).
+SMB.HookCheckBurst = 5
+SMB.HookCheckInterval = 0.2
+
 function SMB:QueueCheck(button)
 	if SMB.working > 0 or queuedButtons[button] then return end
 	queuedButtons[button] = true
@@ -589,7 +596,16 @@ function SMB:QueueCheck(button)
 		queuedButtons[button] = nil
 		return
 	end
-	C_Timer.After(0, function()
+	local delay = 0
+	local now = _G.GetTime and _G.GetTime() or 0
+	local checks = hookChecks[button]
+	if not checks or now - checks.since >= 1 then
+		checks = { since = now, count = 0 }
+		hookChecks[button] = checks
+	end
+	checks.count = checks.count + 1
+	if checks.count > SMB.HookCheckBurst then delay = SMB.HookCheckInterval end
+	C_Timer.After(delay, function()
 		queuedButtons[button] = nil
 		SMB:CheckButton(button)
 	end)
@@ -679,8 +695,13 @@ SMB.EachRegion = eachRegion
 function SMB:SkinMinimapButton(button)
 	if button.isSkinned then return end
 
+	-- textures a layout claims (ItemRack's SplitIcon and Divider) are left to the layout; it runs at
+	-- the check right after the scan
+	local claimed = SMB:ClaimedRegions(button)
 	eachRegion(button, function(region)
-		if isTexture(region) then
+		if isTexture(region) and claimed[region] then
+			SMB:HookRegion(button, region)
+		elseif isTexture(region) then
 			local texture = regionImage(region)
 			if texture and SMB:RemoveTexture(texture) then
 				SMB:RemoveRegion(button, region)
@@ -810,6 +831,16 @@ function SMB:GetButtonLayout(button)
 	return SMB.ButtonLayouts[name]
 end
 
+-- region -> true for the textures the layout of the button claims
+function SMB:ClaimedRegions(button)
+	local claimed = {}
+	local layout = SMB:GetButtonLayout(button)
+	if layout then
+		for _, region in ipairs(layout.claims(button)) do claimed[region] = true end
+	end
+	return claimed
+end
+
 --------------------------------------------------------------------------------
 -- Check of a skinned button: on every scan and on the next frame after its addon changed one of
 -- its textures (see the hooks above). Textures that came after the first skin, or got their image
@@ -820,10 +851,7 @@ end
 
 local function checkRegions(button)
 	local layout = SMB:GetButtonLayout(button)
-	local claimed = {}
-	if layout then
-		for _, region in ipairs(layout.claims(button)) do claimed[region] = true end
-	end
+	local claimed = SMB:ClaimedRegions(button)
 	local fallback = fallbackTextures[button]
 	eachRegion(button, function(region)
 		if not isTexture(region) or claimed[region] or region == fallback then return end
@@ -864,22 +892,28 @@ end
 -- button once per session, so that it can be reported (with /smb debug), when it still needs the
 -- replacement at a check at least SMB.FallbackReportDelay seconds after the replacement appeared (at
 -- the next scan, 6 s, at the latest): an addon that sets its icon a moment after login is not
--- reported. The replacement goes away as soon as the button shows its own icon again. Only the addon buttons the scan took are checked;
--- the Blizzard buttons are built by this addon itself.
+-- reported. The replacement goes away as soon as the button shows its own icon again.
+-- An icon that is intact (image, anchors, size) but hidden or at alpha 0 may be the addon's own
+-- doing (a blinking icon, an off state). It gets no replacement at once: the replacement comes only
+-- if the icon is still hidden SMB.HiddenIconDelay seconds after it was first found so (at a later
+-- check, the next scan or the one after); an icon that loses its image or its place gets the
+-- replacement at once. Only the addon buttons the scan took are checked; the Blizzard buttons are
+-- built by this addon itself.
 --------------------------------------------------------------------------------
 
 SMB.FallbackIcon = [[Interface\Icons\INV_Misc_QuestionMark]]
 SMB.FallbackReportDelay = 5
+SMB.HiddenIconDelay = 5
 SMB.FallbackReported = SMB.FallbackReported or {}
 local fallbackSince = setmetatable({}, { __mode = 'k' }) -- button -> GetTime() when the replacement appeared
+local hiddenSince = setmetatable({}, { __mode = 'k' }) -- button -> GetTime() when its intact icon was first found hidden
 
-function SMB:IsVisibleIcon(region)
+-- true if the texture has an image and a place: not HIGHLIGHT, an image, at least one anchor, with a
+-- single anchor a size above 0 (shown state and alpha are not looked at)
+local function isIntactIcon(region)
 	if not isTexture(region) then return false end
 	if region:GetDrawLayer() == 'HIGHLIGHT' then return false end
 	if regionImage(region) == nil then return false end
-	if not isShownPlain(region) then return false end
-	local alpha = region:GetAlpha()
-	if not isSecret(alpha) and not (type(alpha) == 'number' and alpha > 0) then return false end
 	local points = region:GetNumPoints()
 	if isSecret(points) then return true end
 	if type(points) ~= 'number' or points < 1 then return false end
@@ -887,6 +921,17 @@ function SMB:IsVisibleIcon(region)
 	local width, height = region:GetSize()
 	if isSecret(width) or isSecret(height) then return true end
 	return type(width) == 'number' and type(height) == 'number' and width > 0 and height > 0
+end
+
+local function isOpaque(region)
+	local alpha = region:GetAlpha()
+	if isSecret(alpha) then return true end
+	return type(alpha) == 'number' and alpha > 0
+end
+
+function SMB:IsVisibleIcon(region)
+	if not isIntactIcon(region) then return false end
+	return isShownPlain(region) and isOpaque(region)
 end
 
 -- true if a texture the skin or a layout placed in the button is a visible icon (the replacement
@@ -897,6 +942,17 @@ function SMB:HasVisibleIcon(button)
 		if found or handledRegions[region] ~= button then return end
 		if frame ~= button and not isShownPlain(frame) then return end
 		if SMB:IsVisibleIcon(region) then found = true end
+	end)
+	return found
+end
+
+-- true if a texture the skin or a layout placed in the button has its image and its place but is
+-- hidden (itself or its frame) or at alpha 0: possibly the addon's own doing
+function SMB:HasHiddenIcon(button)
+	local found = false
+	eachRegion(button, function(region)
+		if found or handledRegions[region] ~= button then return end
+		if isIntactIcon(region) then found = true end
 	end)
 	return found
 end
@@ -1000,23 +1056,35 @@ end
 
 -- The check of the regions (above), then the self-check of a button that is shown. Returns true if
 -- the button shows its own icon, false if it shows the replacement, nil for a button that is not
--- checked (hidden, or not taken by the scan).
+-- checked (hidden, or not taken by the scan) or whose intact icon its addon hid only a moment ago.
 local function checkButton(button)
 	checkRegions(button)
 	if not isShownPlain(button) then return nil end
 	if SMB:HasVisibleIcon(button) then
+		hiddenSince[button] = nil
 		SMB:HideFallback(button)
 		return true
 	end
-	-- repair once: place every skinned texture again, then the layout
-	eachRegion(button, function(region)
-		if handledRegions[region] == button then SMB:PlaceRegion(region) end
-	end)
-	local layout = SMB:GetButtonLayout(button)
-	if layout then layout.apply(SMB, button) end
-	if SMB:HasVisibleIcon(button) then
-		SMB:HideFallback(button)
-		return true
+	-- repair once: place every skinned texture again, then the layout (not needed when an icon has
+	-- its image and its place and is only hidden)
+	if not SMB:HasHiddenIcon(button) then
+		eachRegion(button, function(region)
+			if handledRegions[region] == button then SMB:PlaceRegion(region) end
+		end)
+		local layout = SMB:GetButtonLayout(button)
+		if layout then layout.apply(SMB, button) end
+		if SMB:HasVisibleIcon(button) then
+			hiddenSince[button] = nil
+			SMB:HideFallback(button)
+			return true
+		end
+	end
+	-- an intact icon its addon hid: wait (blinking, off state), unless the replacement is up already
+	local fallback = fallbackTextures[button]
+	if SMB:HasHiddenIcon(button) and not (fallback and isShownPlain(fallback)) then
+		local now = _G.GetTime and _G.GetTime() or 0
+		if not hiddenSince[button] then hiddenSince[button] = now end
+		if now - hiddenSince[button] < SMB.HiddenIconDelay then return nil end
 	end
 	SMB:ShowFallback(button)
 	return false

@@ -422,9 +422,21 @@ describe("where the glow sits", function()
 
     it("the glow lies over the neighbouring buttons without catching the mouse there", function()
         local SMB = fresh({ tracking = gatherer(false) })
+        local neighbour = NewLibDBIconButton("Neighbour")
+        SMB:GrabMinimapButtons(true)
         AdvanceTime(7.1)
         local button, Glow = trackerButton(), SMB.TrackerGlow
+        assert_true(neighbour:GetParent() == SMB.Bar, "a real neighbour in the bar")
         assert_true(Glow:GetFrameLevel() > button:GetFrameLevel())
+        local others = 0
+        for _, other in ipairs(SMB.Buttons) do
+            if other ~= button and other:GetParent() == SMB.Bar then
+                others = others + 1
+                assert_eq(Glow:GetFrameStrata(), other:GetFrameStrata(), SMB:GetButtonLabel(other))
+                assert_true(Glow:GetFrameLevel() > other:GetFrameLevel(), "over " .. SMB:GetButtonLabel(other))
+            end
+        end
+        assert_true(others >= 1)
         assert_false(Glow:IsMouseEnabled())
         for _, edge in ipairs(Glow.Edges) do
             assert_eq(StubState(edge).blendMode, "ADD", "additive: brightens, covers nothing")
