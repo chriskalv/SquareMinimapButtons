@@ -162,6 +162,23 @@ local function SetClassColorBorder(frame)
 end
 
 local CALENDAR_ATLAS = 'ui-hud-minimap-calendar-button'
+local TRACKING_ATLAS = 'ui-hud-minimap-tracking-button'
+
+-- Tracking button in WoW Forever (1.0.2): Blizzard_Minimap/Camelot/MinimapTrackingButton.xml draws
+-- the button with two textures of one atlas, ui-hud-minimap-tracking-button: StateTexture (layer
+-- ARTWORK, shown) and AddTexture (the same atlas, blend mode ADD, shown with alpha 0.1 under the
+-- mouse and 0.2 while pressed). The atlas is the magnifying glass inside a bronze square frame; the
+-- frame is part of the image, so there is no region to hide for it, and Forever shows no image of
+-- the active tracking on the button. Camelot/MinimapTrackingButton.lua (OnButtonStateChanged) sets
+-- the atlas of StateTexture again on every button state (normal, mouse over, pressed, menu open)
+-- and only the shown state and the alpha of AddTexture; it never touches the alpha of StateTexture
+-- or the image of AddTexture. So StateTexture is made transparent and AddTexture emptied once, and
+-- an own texture of the addon in the button shows the same atlas cropped by SMB.TrackingIconCrop on
+-- each side, which cuts the frame away and keeps the glass. No method of the button or its textures
+-- is replaced or hooked; the menu and its scripts stay Blizzard's. The crop of 15 % is measured on a
+-- screenshot of the button (the frame with its corners covers about 13 % of each side, the glass
+-- lies between 20 % and 80 %); the atlas file itself could not be read.
+SMB.TrackingIconCrop = 0.15
 
 function SMB:HandleBlizzardButtons()
 	-- the bar exists only after Initialize
@@ -240,6 +257,7 @@ function SMB:HandleBlizzardButtons()
 			if Tracking.Background then Tracking.Background:SetAlpha(0) end
 			TrackingButton:ClearAllPoints()
 			TrackingButton:SetAllPoints(Tracking)
+			if SMB.IsForever then SMB:SkinTrackingIcon(TrackingButton) end
 
 			TrackingButton:SetScript('OnMouseDown', nil)
 			TrackingButton:SetScript('OnMouseUp', nil)
@@ -381,6 +399,36 @@ function SMB:HandleBlizzardButtons()
 
 	-- The original calls Update only out of combat; Update itself waits for the end of combat.
 	SMB:Update()
+end
+
+-- The glass of the tracking button without Blizzard's frame (see TRACKING_ATLAS above). Returns
+-- true if the own icon shows; without the atlas or without the two textures nothing is changed.
+function SMB:SkinTrackingIcon(button)
+	local state, add = button.StateTexture, button.AddTexture
+	if not (type(state) == 'table' and type(add) == 'table' and state.SetAlpha and add.SetTexture) then return false end
+	local C_Texture = _G.C_Texture
+	local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(TRACKING_ATLAS)
+	if type(info) ~= 'table' then return false end
+	local l, r, t, b = info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
+	for _, value in ipairs({ l, r, t, b }) do
+		if type(value) ~= 'number' or (_G.issecretvalue and _G.issecretvalue(value)) then return false end
+	end
+	local Icon = button.SMBIcon
+	if not Icon then
+		Icon = button:CreateTexture(nil, 'ARTWORK')
+		button.SMBIcon = Icon
+	end
+	Icon:ClearAllPoints()
+	SMB:SetInside(Icon)
+	Icon:SetAtlas(TRACKING_ATLAS)
+	local f = SMB.TrackingIconCrop
+	local w, h = r - l, b - t
+	Icon:SetTexCoord(l + w * f, r - w * f, t + h * f, b - h * f)
+	Icon:Show()
+	state:SetAlpha(0)
+	add:SetTexture()
+	add:SetAlpha(0)
+	return true
 end
 
 --------------------------------------------------------------------------------
@@ -1354,7 +1402,11 @@ SMB.TrackerGlowEvents = {
 SMB.TrackerGlowSpells = { 2383, 2580, 2481 }
 
 SMB.TrackerGlowColor = { 1, 0, 0 }
-SMB.TrackerGlowSize = 2 -- thickness of the edges; they lie just outside the button
+-- 1.0.2: a soft glow instead of two hard pixels: SMB.TrackerGlowSize rings of 1 px around the
+-- button, the alpha of ring i (1 = next to the button) is TrackerGlowAlpha * ((size - i + 1) / size)^2,
+-- so the light falls off outward (0.85, 0.54, 0.31, 0.14, 0.03).
+SMB.TrackerGlowSize = 5
+SMB.TrackerGlowAlpha = 0.85
 
 function SMB:GetTrackerButton()
 	local MinimapCluster = _G.MinimapCluster
@@ -1427,8 +1479,11 @@ function SMB:ShouldGlowTracker()
 	return SMB:HasInactiveTracking()
 end
 
--- The glow: a frame without mouse input over the button, four red edges with additive blending and
--- an alpha pulse 0.35 <-> 1 (0.6 s each way, looping BOUNCE).
+-- The glow: a frame without mouse input around the button (SMB.TrackerGlowSize larger on each side)
+-- with SMB.TrackerGlowSize rings of 1 px, each four textures of a plain color (SetColorTexture: no
+-- image file, so nothing depends on a texture of the client) in red with additive blending, and an
+-- alpha pulse 0.35 <-> 1 (0.6 s each way, looping BOUNCE). Additive light only brightens: the glow
+-- may reach over the neighbouring buttons but covers nothing, and it takes no mouse input.
 function SMB:CreateTrackerGlow(button)
 	local Glow = _G.CreateFrame('Frame', nil, button)
 	Glow:EnableMouse(false)
@@ -1437,22 +1492,30 @@ function SMB:CreateTrackerGlow(button)
 	Glow:SetPoint('BOTTOMRIGHT', button, 'BOTTOMRIGHT', size, -size)
 
 	local r, g, b = unpack(SMB.TrackerGlowColor)
-	local edges = {
-		{ 'TOPLEFT', 'TOPRIGHT', nil, size },
-		{ 'BOTTOMLEFT', 'BOTTOMRIGHT', nil, size },
-		{ 'TOPLEFT', 'BOTTOMLEFT', size, nil },
-		{ 'TOPRIGHT', 'BOTTOMRIGHT', size, nil },
-	}
-	Glow.Edges = {}
-	for i, edge in ipairs(edges) do
-		local Edge = Glow:CreateTexture(nil, 'OVERLAY')
-		Edge:SetColorTexture(r, g, b, 1)
-		Edge:SetBlendMode('ADD')
-		Edge:SetPoint(edge[1], Glow, edge[1])
-		Edge:SetPoint(edge[2], Glow, edge[2])
-		if edge[3] then Edge:SetWidth(edge[3]) end
-		if edge[4] then Edge:SetHeight(edge[4]) end
-		Glow.Edges[i] = Edge
+	Glow.Edges, Glow.Rings = {}, {}
+	for ring = 1, size do
+		-- k: distance of the ring from the outer edge of the glow frame
+		local k = size - ring
+		local alpha = SMB.TrackerGlowAlpha * ((size - ring + 1) / size) ^ 2
+		local edges = {
+			{ 'TOPLEFT', k, -k, 'TOPRIGHT', -k, -k, nil, 1 }, -- top, with the corners
+			{ 'BOTTOMLEFT', k, k, 'BOTTOMRIGHT', -k, k, nil, 1 }, -- bottom, with the corners
+			{ 'TOPLEFT', k, -k - 1, 'BOTTOMLEFT', k, k + 1, 1, nil }, -- left, between them
+			{ 'TOPRIGHT', -k, -k - 1, 'BOTTOMRIGHT', -k, k + 1, 1, nil }, -- right, between them
+		}
+		local textures = {}
+		for _, edge in ipairs(edges) do
+			local Edge = Glow:CreateTexture(nil, 'OVERLAY')
+			Edge:SetColorTexture(r, g, b, alpha)
+			Edge:SetBlendMode('ADD')
+			Edge:SetPoint(edge[1], Glow, edge[1], edge[2], edge[3])
+			Edge:SetPoint(edge[4], Glow, edge[4], edge[5], edge[6])
+			if edge[7] then Edge:SetWidth(edge[7]) end
+			if edge[8] then Edge:SetHeight(edge[8]) end
+			textures[#textures + 1] = Edge
+			Glow.Edges[#Glow.Edges + 1] = Edge
+		end
+		Glow.Rings[ring] = textures
 	end
 
 	local Pulse = Glow:CreateAnimationGroup()

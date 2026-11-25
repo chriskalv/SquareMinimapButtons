@@ -385,6 +385,96 @@ describe("tracking", function()
     end)
 end)
 
+describe("tracking icon without Blizzard's frame (1.0.2)", function()
+    -- the stub's made-up atlas coordinates 0.5-0.75 x 0.25-0.5, cropped by 15 % per side
+    local CROPPED = { 0.5375, 0.2875, 0.5375, 0.4625, 0.7125, 0.2875, 0.7125, 0.4625 }
+
+    local function near(actual, expected, msg)
+        assert_eq(#actual, #expected, msg)
+        for i = 1, #expected do
+            assert_true(math.abs(actual[i] - expected[i]) < 1e-9, (msg or "") .. " coordinate " .. i)
+        end
+    end
+
+    local function assertGlassOnly(Button, msg)
+        local Icon = Button.SMBIcon
+        assert_true(RegionDrawn(Icon), msg .. ": own icon drawn")
+        assert_eq(Icon:GetAtlas(), "ui-hud-minimap-tracking-button", msg)
+        near({ Icon:GetTexCoord() }, CROPPED, msg)
+        assert_eq(StubState(Icon).points, {
+            { "TOPLEFT", Button, "TOPLEFT", 1, -1 },
+            { "BOTTOMRIGHT", Button, "BOTTOMRIGHT", -1, 1 },
+        }, msg .. ": inside the border")
+        local drawn, why = RegionDrawn(Button.StateTexture)
+        assert_false(drawn, msg .. ": StateTexture not drawn")
+        assert_eq(why, "alpha 0", msg)
+        assert_false(RegionDrawn(Button.AddTexture), msg .. ": AddTexture not drawn")
+    end
+
+    it("Forever: the glass of the atlas cropped in an own texture, Blizzard's frame not drawn", function()
+        built()
+        local Button = MinimapCluster.Tracking.Button
+        assertGlassOnly(Button, "after the build")
+        assert_eq(STUB.errors, {})
+    end)
+
+    it("Blizzard's button states (mouse over, pressed, menu) do not bring the frame back", function()
+        built()
+        local Button = MinimapCluster.Tracking.Button
+        for _, script in ipairs({ "OnEnter", "OnMouseDown", "OnMouseUp", "OnLeave" }) do
+            -- Blizzard's own state change, as Camelot/MinimapTrackingButton.lua does it
+            Button.StateTexture:SetAtlas("ui-hud-minimap-tracking-button")
+            Button.AddTexture:Show()
+            Button.AddTexture:SetAlpha(script == "OnMouseDown" and 0.2 or 0.1)
+            if Button:GetScript(script) then Button:GetScript(script)(Button) end
+            assertGlassOnly(Button, script)
+        end
+    end)
+
+    it("replaces no method of the button or of its textures; Blizzard's scripts still run", function()
+        built()
+        local Button = MinimapCluster.Tracking.Button
+        for _, region in ipairs({ Button.StateTexture, Button.AddTexture }) do
+            for _, name in ipairs({ "SetAtlas", "SetAlpha", "SetShown", "Show", "SetTexture", "SetTexCoord" }) do
+                assert_nil(rawget(region, name), name)
+            end
+        end
+        for _, name in ipairs({ "SetAtlas", "SetAlpha", "OnButtonStateChanged", "OpenMenu" }) do
+            assert_nil(rawget(Button, name), name)
+        end
+        Button:GetScript("OnEnter")(Button)
+        assert_eq(Button.log, { "OnEnter" })
+    end)
+
+    it("a second build creates no second icon", function()
+        local SMB = built()
+        local Button = MinimapCluster.Tracking.Button
+        local Icon = Button.SMBIcon
+        Button.SMB = nil
+        SMB:HandleBlizzardButtons()
+        assert_true(Button.SMBIcon == Icon)
+        assert_true(SMB:SkinTrackingIcon(Button))
+        assert_true(Button.SMBIcon == Icon)
+    end)
+
+    it("without the atlas in the client: Blizzard's textures stay as they are, no own icon", function()
+        built({ noAtlasInfo = true })
+        local Button = MinimapCluster.Tracking.Button
+        assert_nil(Button.SMBIcon)
+        assert_true(RegionDrawn(Button.StateTexture), "Blizzard's image stays")
+        assert_eq(STUB.errors, {})
+    end)
+
+    it("MoveTracker off and Retail: nothing changes on the button", function()
+        built(withProfile({ MoveTracker = false }, { projectID = FOREVER }))
+        local Button = MinimapCluster.Tracking.Button
+        assert_nil(Button.SMBIcon)
+        assert_true(RegionDrawn(Button.StateTexture))
+        built({ projectID = RETAIL })
+        assert_nil(MinimapCluster.Tracking.Button.SMBIcon)
+    end)
+end)
+
 describe("calendar", function()
     it("Forever: no GameTimeTexture, Blizzard's textures transparent, own icon, child of the bar", function()
         local SMB = built()
