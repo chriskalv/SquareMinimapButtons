@@ -50,13 +50,20 @@ L['ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled, s
 L['ProjectAzilroka is loaded, but its settings could not be read, so this addon stays inactive. Disable one of the two to avoid conflicts.'] = 'ProjectAzilroka ist geladen, aber dessen Einstellungen konnten nicht gelesen werden, deshalb bleibt dieses Addon inaktiv. Deaktiviere eines der beiden, um Konflikte zu vermeiden.'
 
 -- WoW Forever port: slash command
-L['Usage: /smb [scan | reset] (also /squareminimap and /squareminimapbuttons)'] = 'Aufruf: /smb [scan | reset] (auch /squareminimap und /squareminimapbuttons)'
+L['Usage: /smb [scan | reset | debug [name]] (also /squareminimap and /squareminimapbuttons)'] = 'Aufruf: /smb [scan | reset | debug [Name]] (auch /squareminimap und /squareminimapbuttons)'
 L['/smb: open the options'] = '/smb: Optionen öffnen'
 L['/smb scan: scan the minimap for new buttons now'] = '/smb scan: Minikarte sofort nach neuen Knöpfen durchsuchen'
 L['/smb reset: reset the current profile to the defaults'] = '/smb reset: aktuelles Profil auf die Standardwerte zurücksetzen'
 L['The options are not available yet.'] = 'Die Optionen sind noch nicht verfügbar.'
 L['Scanning is not available yet.'] = 'Die Suche nach Knöpfen ist noch nicht verfügbar.'
 L['The current profile was reset to the defaults.'] = 'Das aktuelle Profil wurde auf die Standardwerte zurückgesetzt.'
+L['/smb debug [name]: list the buttons of the bar with their textures (all, or those whose name contains the text)'] = '/smb debug [Name]: Knöpfe der Leiste mit ihren Texturen auflisten (alle, oder die, deren Name den Text enthält)'
+
+-- WoW Forever port 1.0.2: self-check of the buttons and diagnosis (chat; %s: button names, %d: count)
+L['%s showed no icon in the bar and shows a replacement image now (%s). Please report it with the output of /smb debug %s.'] = '%s zeigte in der Leiste kein Symbol und zeigt jetzt ein Ersatzbild (%s). Bitte melde das mit der Ausgabe von /smb debug %s.'
+L['The bar does not exist (the addon is turned off or inactive).'] = 'Die Leiste existiert nicht (das Addon ist ausgeschaltet oder inaktiv).'
+L['No button of the bar matches "%s".'] = 'Kein Knopf der Leiste passt zu „%s“.'
+L['%d buttons listed (/smb debug %s).'] = '%d Knöpfe aufgelistet (/smb debug %s).'
 
 -- WoW Forever port: one-time switch to the shared profile (chat, %s: profile names)
 L['this character now uses the shared profile %s'] = 'dieser Charakter nutzt jetzt das gemeinsame Profil %s'

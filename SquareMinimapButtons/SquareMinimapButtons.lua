@@ -54,7 +54,7 @@ local SMB = ns.SMB
 
 local _G = _G
 local type, next, pairs, ipairs, tostring, unpack, select = type, next, pairs, ipairs, tostring, unpack, select
-local strmatch, tinsert = string.match, table.insert
+local strmatch, strfind, strlower, format, tinsert = string.match, string.find, string.lower, string.format, table.insert
 
 -- Buttons in the order they were skinned; the bar (Update) lays them out in this order.
 SMB.Buttons = SMB.Buttons or {}
@@ -487,8 +487,9 @@ local hookedRegions = setmetatable({}, { __mode = 'k' })
 local savedMethods = setmetatable({}, { __mode = 'k' }) -- region -> { name = own field or false }
 local skinnedButtons = setmetatable({}, { __mode = 'k' }) -- buttons of other addons the scan took
 local queuedButtons = setmetatable({}, { __mode = 'k' })
+local fallbackTextures = setmetatable({}, { __mode = 'k' }) -- button -> replacement texture
 SMB.HandledRegions, SMB.RemovedRegions, SMB.CroppedRegions = handledRegions, removedRegions, croppedRegions
-SMB.SkinnedButtons = skinnedButtons
+SMB.SkinnedButtons, SMB.FallbackTextures = skinnedButtons, fallbackTextures
 
 -- While the skin itself works on textures, the hooks do not queue checks (no loop).
 SMB.working = 0
@@ -775,8 +776,9 @@ local function checkRegions(button)
 	if layout then
 		for _, region in ipairs(layout.claims(button)) do claimed[region] = true end
 	end
+	local fallback = fallbackTextures[button]
 	eachRegion(button, function(region)
-		if not isTexture(region) or claimed[region] then return end
+		if not isTexture(region) or claimed[region] or region == fallback then return end
 		local image = regionImage(region)
 		if removedRegions[region] then
 			if image and SMB:RemoveTexture(image) then
@@ -798,13 +800,285 @@ local function checkRegions(button)
 	if layout then layout.apply(SMB, button) end
 end
 
+--------------------------------------------------------------------------------
+-- Self-check (1.0.2): every addon button in the bar shows an icon
+-- A visible icon is a texture the skin (or a layout) placed in the button that is shown, has an
+-- image (file ID, path or atlas), an alpha above 0 and at least one anchor; with a single anchor it
+-- also needs a width and a height above 0 (the client draws no texture without anchors). The layer
+-- HIGHLIGHT does not count (shown only under the mouse). IsShown, GetAlpha and GetSize may return
+-- secret values in WoW Forever (SecretReturnsForAspect Shown and Alpha, SecretWhenAnchoringSecret);
+-- a secret value is never compared and counts as visible. GetNumPoints, GetTexture,
+-- GetTextureFileID, GetAtlas and GetDrawLayer have no secret marking.
+-- A button in the bar without a visible icon is repaired once: its textures are placed again and
+-- its layout runs again. If it still has none, a replacement image fills the square: the icon of
+-- its LibDataBroker object, else the IconTexture from the TOC of its addon, else the question mark
+-- Interface\Icons\INV_Misc_QuestionMark (the client's own QUESTION_MARK_ICON). The chat names such a
+-- button once per session, so that it can be reported (with /smb debug), when it still needs the
+-- replacement at a check at least SMB.FallbackReportDelay seconds after the replacement appeared (at
+-- the next scan, 6 s, at the latest): an addon that sets its icon a moment after login is not
+-- reported. The replacement goes away as soon as the button shows its own icon again. Only the addon buttons the scan took are checked;
+-- the Blizzard buttons are built by this addon itself.
+--------------------------------------------------------------------------------
+
+SMB.FallbackIcon = [[Interface\Icons\INV_Misc_QuestionMark]]
+SMB.FallbackReportDelay = 5
+SMB.FallbackReported = SMB.FallbackReported or {}
+local fallbackSince = setmetatable({}, { __mode = 'k' }) -- button -> GetTime() when the replacement appeared
+
+function SMB:IsVisibleIcon(region)
+	if not isTexture(region) then return false end
+	if region:GetDrawLayer() == 'HIGHLIGHT' then return false end
+	if regionImage(region) == nil then return false end
+	if not isShownPlain(region) then return false end
+	local alpha = region:GetAlpha()
+	if not isSecret(alpha) and not (type(alpha) == 'number' and alpha > 0) then return false end
+	local points = region:GetNumPoints()
+	if isSecret(points) then return true end
+	if type(points) ~= 'number' or points < 1 then return false end
+	if points >= 2 then return true end
+	local width, height = region:GetSize()
+	if isSecret(width) or isSecret(height) then return true end
+	return type(width) == 'number' and type(height) == 'number' and width > 0 and height > 0
+end
+
+-- true if a texture the skin or a layout placed in the button is a visible icon (the replacement
+-- image does not count)
+function SMB:HasVisibleIcon(button)
+	local found = false
+	eachRegion(button, function(region, frame)
+		if found or handledRegions[region] ~= button then return end
+		if frame ~= button and not isShownPlain(frame) then return end
+		if SMB:IsVisibleIcon(region) then found = true end
+	end)
+	return found
+end
+
+-- the LibDataBroker object of a button: LibDBIcon keeps it in button.dataObject; else by the name
+-- LibDBIcon10_<name>
+function SMB:GetBrokerObject(button)
+	local object = button.dataObject
+	if type(object) == 'table' then return object end
+	local name = button.GetName and button:GetName()
+	if type(name) ~= 'string' or isSecret(name) then return nil end
+	local key = strmatch(name, '^LibDBIcon10_(.+)$')
+	local LibStub = _G.LibStub
+	local LDB = key and LibStub and LibStub('LibDataBroker-1.1', true)
+	if LDB and LDB.GetDataObjectByName then return LDB:GetDataObjectByName(key) end
+	return nil
+end
+
+-- candidate addon names for the TOC: the broker's tocname, the broker's name, the name after
+-- LibDBIcon10_
+function SMB:GetButtonAddOnNames(button, object)
+	local names = {}
+	if object and type(object.tocname) == 'string' then names[#names + 1] = object.tocname end
+	local LibStub = _G.LibStub
+	local LDB = object and LibStub and LibStub('LibDataBroker-1.1', true)
+	if LDB and LDB.GetNameByDataObject then
+		local brokerName = LDB:GetNameByDataObject(object)
+		if type(brokerName) == 'string' then names[#names + 1] = brokerName end
+	end
+	local name = button.GetName and button:GetName()
+	if type(name) == 'string' and not isSecret(name) then
+		names[#names + 1] = strmatch(name, '^LibDBIcon10_(.+)$') or name
+	end
+	return names
+end
+
+local function plainImage(value)
+	if (type(value) == 'string' and value ~= '') or type(value) == 'number' then
+		if not isSecret(value) then return value end
+	end
+	return nil
+end
+
+-- The replacement image and its source ('broker', 'toc' or 'default').
+function SMB:GetFallbackImage(button)
+	local object = SMB:GetBrokerObject(button)
+	local icon = object and plainImage(object.icon)
+	if icon then return icon, 'broker' end
+	local C_AddOns = _G.C_AddOns
+	if C_AddOns and C_AddOns.GetAddOnMetadata then
+		for _, addon in ipairs(SMB:GetButtonAddOnNames(button, object)) do
+			-- an unknown addon name may raise an error
+			local ok, value = pcall(C_AddOns.GetAddOnMetadata, addon, 'IconTexture')
+			value = ok and plainImage(value)
+			if value then return value, 'toc' end
+		end
+	end
+	return SMB.FallbackIcon, 'default'
+end
+
+function SMB:GetButtonLabel(button)
+	local name = button.GetName and button:GetName()
+	if type(name) == 'string' and not isSecret(name) then return name end
+	local debugName = button.GetDebugName and button:GetDebugName()
+	if type(debugName) == 'string' and not isSecret(debugName) then return debugName end
+	return '?'
+end
+
+function SMB:ShowFallback(button)
+	local texture = fallbackTextures[button]
+	if not texture then
+		texture = button:CreateTexture(nil, 'ARTWORK')
+		fallbackTextures[button] = texture
+	end
+	local image, source = SMB:GetFallbackImage(button)
+	SMB.working = SMB.working + 1
+	texture:SetTexture(image)
+	SMB:SetInside(texture, button)
+	texture:SetTexCoord(SMB:TexCoords())
+	texture:SetAlpha(1)
+	texture:Show()
+	SMB.working = SMB.working - 1
+	texture.SMBSource = source
+
+	local now = _G.GetTime and _G.GetTime() or 0
+	if not fallbackSince[button] then fallbackSince[button] = now end
+	local label = SMB:GetButtonLabel(button)
+	if not SMB.FallbackReported[label] and now - fallbackSince[button] >= SMB.FallbackReportDelay then
+		SMB.FallbackReported[label] = true
+		local sources = { broker = 'LibDataBroker', toc = 'TOC IconTexture', default = 'INV_Misc_QuestionMark' }
+		SMB:Message(format(SMB.L['%s showed no icon in the bar and shows a replacement image now (%s). Please report it with the output of /smb debug %s.'], label, sources[source], label))
+	end
+	return texture
+end
+
+function SMB:HideFallback(button)
+	fallbackSince[button] = nil
+	local texture = fallbackTextures[button]
+	if texture and texture:IsShown() then texture:Hide() end
+end
+
+-- The check of the regions (above), then the self-check of a button that is shown. Returns true if
+-- the button shows its own icon, false if it shows the replacement, nil for a button that is not
+-- checked (hidden, or not taken by the scan).
+local function checkButton(button)
+	checkRegions(button)
+	if not isShownPlain(button) then return nil end
+	if SMB:HasVisibleIcon(button) then
+		SMB:HideFallback(button)
+		return true
+	end
+	-- repair once: place every skinned texture again, then the layout
+	eachRegion(button, function(region)
+		if handledRegions[region] == button then SMB:PlaceRegion(region) end
+	end)
+	local layout = SMB:GetButtonLayout(button)
+	if layout then layout.apply(SMB, button) end
+	if SMB:HasVisibleIcon(button) then
+		SMB:HideFallback(button)
+		return true
+	end
+	SMB:ShowFallback(button)
+	return false
+end
+
 function SMB:CheckButton(button)
 	if not skinnedButtons[button] then return nil end
 	SMB.working = SMB.working + 1
-	local ok, err = pcall(checkRegions, button)
+	local ok, result = pcall(checkButton, button)
 	SMB.working = SMB.working - 1
-	if not ok then _G.geterrorhandler()(err) end
-	return ok
+	if not ok then
+		_G.geterrorhandler()(result)
+		return nil
+	end
+	return result
+end
+
+--------------------------------------------------------------------------------
+-- Diagnosis: /smb debug [name]
+-- Lists the buttons of the bar (in its order; all, or those whose name contains the text, without
+-- regard to case) and for each its textures and other regions, and those of its direct children:
+-- object type, layer, image, shown, alpha, number of anchors, size, number of masks and the role
+-- (skin: placed by the skin; removed: border or background emptied by the skin; layout: placed by
+-- a layout; fallback: the replacement image; none: left alone). Values the client keeps secret are
+-- printed as "secret".
+--------------------------------------------------------------------------------
+
+local function show(value)
+	if isSecret(value) then return 'secret' end
+	if value == nil then return '-' end
+	if type(value) == 'boolean' then return value and 'yes' or 'no' end
+	if type(value) == 'number' then return (format('%.4g', value)) end
+	return tostring(value)
+end
+
+local function printLine(text)
+	local chat = _G.DEFAULT_CHAT_FRAME
+	if chat and chat.AddMessage then chat:AddMessage(text) else _G.print(text) end
+end
+
+function SMB:DescribeRegion(button, region)
+	local objectType = region.GetObjectType and region:GetObjectType() or '?'
+	local layer, sublevel
+	if region.GetDrawLayer then layer, sublevel = region:GetDrawLayer() end
+	local parts = { show(objectType), show(layer) .. (sublevel and ('/' .. show(sublevel)) or '') }
+	if region.IsObjectType and region:IsObjectType('Texture') then
+		parts[#parts + 1] = 'image=' .. show(regionImage(region))
+	end
+	parts[#parts + 1] = 'shown=' .. show(region.IsShown and region:IsShown())
+	parts[#parts + 1] = 'alpha=' .. show(region.GetAlpha and region:GetAlpha())
+	parts[#parts + 1] = 'points=' .. show(region.GetNumPoints and region:GetNumPoints())
+	if region.GetSize then
+		local width, height = region:GetSize()
+		parts[#parts + 1] = 'size=' .. show(width) .. 'x' .. show(height)
+	end
+	if region.GetNumMaskTextures then
+		parts[#parts + 1] = 'masks=' .. show(region:GetNumMaskTextures())
+	end
+	local role = 'none'
+	if fallbackTextures[button] == region then
+		role = 'fallback (' .. show(region.SMBSource) .. ')'
+	elseif handledRegions[region] then
+		local layout = SMB:GetButtonLayout(button)
+		role = 'skin'
+		if layout then
+			for _, claimed in ipairs(layout.claims(button)) do
+				if claimed == region then role = 'layout' end
+			end
+		end
+	elseif removedRegions[region] then
+		role = 'removed'
+	end
+	parts[#parts + 1] = 'role=' .. role
+	if SMB:IsRegionLocked(region) then parts[#parts + 1] = 'locked' end
+	return table.concat(parts, ' ')
+end
+
+function SMB:DebugButtons(filter)
+	filter = strlower(filter or '')
+	local L = SMB.L
+	if not SMB.Bar then
+		SMB:Message(L['The bar does not exist (the addon is turned off or inactive).'])
+		return 0
+	end
+	local count = 0
+	for index, button in ipairs(SMB.Buttons) do
+		local label = SMB:GetButtonLabel(button)
+		if filter == '' or strfind(strlower(label), filter, 1, true) then
+			count = count + 1
+			local width, height = button:GetSize()
+			local fallback = fallbackTextures[button]
+			local hasFallback = fallback ~= nil and isShownPlain(fallback)
+			local kind = skinnedButtons[button] and 'addon' or 'Blizzard'
+			printLine(format('%d. %s (%s): shown=%s inBar=%s size=%sx%s fallback=%s', index, label, kind,
+				show(button:IsShown()), show(button:GetParent() == SMB.Bar), show(width), show(height),
+				hasFallback and ('yes, ' .. show(fallback.SMBSource)) or 'no'))
+			for _, frame in next, { button, button:GetChildren() } do
+				local prefix = frame == button and '   ' or ('   [' .. SMB:GetButtonLabel(frame) .. '] ')
+				for _, region in next, { frame:GetRegions() } do
+					printLine(prefix .. SMB:DescribeRegion(button, region))
+				end
+			end
+		end
+	end
+	if count == 0 then
+		SMB:Message(format(L['No button of the bar matches "%s".'], filter))
+	else
+		SMB:Message(format(L['%d buttons listed (/smb debug %s).'], count, filter))
+	end
+	return count
 end
 
 --------------------------------------------------------------------------------

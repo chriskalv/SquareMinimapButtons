@@ -239,7 +239,7 @@ describe("slash commands", function()
         ReloadAddon({})
         StartClient()
         RunSlash("/smb", "help")
-        assert_eq(ChatContains("Usage: /smb [scan | reset] (also /squareminimap and /squareminimapbuttons)"), 1)
+        assert_eq(ChatContains("Usage: /smb [scan | reset | debug [name]] (also /squareminimap and /squareminimapbuttons)"), 1)
         assert_eq(ChatContains("/smb scan: scan the minimap for new buttons now"), 1)
     end)
 

@@ -417,14 +417,16 @@ end
 SMB.SlashCommands = { 'smb', 'squareminimap', 'squareminimapbuttons' }
 
 function SMB:PrintHelp()
-	self:Message(L['Usage: /smb [scan | reset] (also /squareminimap and /squareminimapbuttons)'])
+	self:Message(L['Usage: /smb [scan | reset | debug [name]] (also /squareminimap and /squareminimapbuttons)'])
 	self:Message(L['/smb: open the options'])
 	self:Message(L['/smb scan: scan the minimap for new buttons now'])
 	self:Message(L['/smb reset: reset the current profile to the defaults'])
+	self:Message(L['/smb debug [name]: list the buttons of the bar with their textures (all, or those whose name contains the text)'])
 end
 
 function SMB:SlashCommand(input)
 	local command = strlower(strtrim(input or ''))
+	local word, rest = command:match('^(%S+)%s*(.-)$')
 
 	if command == '' then
 		self:OpenOptions()
@@ -435,6 +437,12 @@ function SMB:SlashCommand(input)
 			self:GrabMinimapButtons(true)
 		else
 			self:Message(L['Scanning is not available yet.'])
+		end
+	elseif word == 'debug' then
+		if self.blocked then
+			self:Message(self:GuardMessage())
+		elseif self.DebugButtons then
+			self:DebugButtons(rest)
 		end
 	elseif command == 'reset' then
 		if self.data then
