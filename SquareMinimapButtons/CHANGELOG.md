@@ -1,13 +1,13 @@
 # Changelog
 
+## 1.0.3 (2026-11-25)
+
+- 1.0.2 is withdrawn: in the game it broke the icons of other addons and hid the tracking button's magnifying glass.
+- This version is 1.0.1 again plus one fix: ItemRack shows its icon in the bar. ItemRack Universal calls `ClearAllPoints` and `SetPoint` on its icon after the skin; up to 1.0.1 only `SetPoint` of a fitted icon was locked, so the icon lost all its anchors and was invisible. The skin now also keeps `ClearAllPoints` from the fitted icon.
+
 ## 1.0.2 (2026-11-25)
 
-- **ItemRack shows its icon in the bar.** ItemRack Universal draws on its LibDBIcon icon itself: on every change of the equipped set (`ItemRack.SetMinimapButtonVisual`) it calls `ClearAllPoints` and `SetPoint` on the icon, sets size, texture coordinates and image, and in the hybrid state (the set of the active queue and the gear worn differ) adds a second half icon, a 1 px line and a round mask. Up to 1.0.1 the skin replaced only `SetPoint` of a fitted texture, while `ClearAllPoints` stayed real: the icon lost every anchor, and a texture without anchors is not drawn, so the button was an empty square. Now the icon stays in the square and follows every change (another set, the gear while events run); the hybrid state shows the left half of the first set's icon and the right half of the second set's icon side by side in the square, split by a 1 px line, as ItemRack's own square button does it.
-- **Icons of other addons are kept in place.** A texture the skin fitted into a button keeps its place, layer and masks whatever its addon calls later: `ClearAllPoints`, `SetPoint`, `SetAllPoints`, `SetSize`, `SetWidth`, `SetHeight`, `SetDrawLayer`, `SetMask` and `AddMaskTexture` do nothing on it (the skin unlocks them only while it places the texture). Image, crop, colour, shown state and alpha stay the addon's; after a change of them the button is checked again on the next frame (about five times a second at most for an icon its addon animates every frame). Every scan also checks the buttons skinned earlier: textures that came later or got their image later are skinned, a border set again is emptied again, a crop reset to the full image comes back. Blizzard's own buttons are not touched this way.
-- **Self-check and replacement image.** Every scan checks that each addon button in the bar shows an icon (a shown texture with an image, alpha above 0 and anchors). If not, the button is repaired once; an icon that keeps its image and place but is hidden or at alpha 0 (perhaps on purpose, such as blinking) gets five seconds of grace; if it stays empty, a replacement image fills the square: the icon of the addon's LibDataBroker object, else the `IconTexture` of its TOC, else a question mark. The chat names such a button once per session, so that it can be reported.
-- **`/smb debug [name]`** lists the buttons of the bar with every texture (type, layer, image, shown, alpha, anchors, size, masks, role, replacement image), all or those whose name contains the text.
-- **Tracking button without the bronze frame.** In WoW Forever the frame is part of the button's atlas (`ui-hud-minimap-tracking-button`). In the bar Blizzard's two textures are made transparent and the addon shows the same atlas cropped to the magnifying glass; the menu and its clicks stay Blizzard's.
-- **Soft tracker glow.** The red frame around the tracking button is now a soft glow (five rings of 1 px whose light falls off outward) that still pulses; the three modes stay. It may reach over the neighbouring buttons but covers nothing and takes no clicks.
+Withdrawn; replaced by 1.0.3. Its changes (locked icon methods, self-check with replacement image, `/smb debug`, tracking button without frame, soft tracker glow) are not in 1.0.3.
 
 ## 1.0.1 (2026-11-07)
 

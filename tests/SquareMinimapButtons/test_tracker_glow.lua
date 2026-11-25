@@ -350,8 +350,8 @@ describe("where the glow sits", function()
         assert_true(SMB.TrackerGlow == Glow, "the same glow frame")
         assert_true(Glow:GetParent() == replacement)
         assert_eq(StubState(Glow).points, {
-            { "TOPLEFT", replacement, "TOPLEFT", -5, 5 },
-            { "BOTTOMRIGHT", replacement, "BOTTOMRIGHT", 5, -5 },
+            { "TOPLEFT", replacement, "TOPLEFT", -2, 2 },
+            { "BOTTOMRIGHT", replacement, "BOTTOMRIGHT", 2, -2 },
         })
         MinimapCluster.Tracking.Button = old
     end)
@@ -376,71 +376,25 @@ describe("where the glow sits", function()
         assert_eq({ button:GetSize() }, { 18, 18 }, "the button keeps its size")
         assert_nil(StubState(button).hitRectInsets, "no change of the hit rectangle")
         assert_eq(StubState(Glow).points, {
-            { "TOPLEFT", button, "TOPLEFT", -5, 5 },
-            { "BOTTOMRIGHT", button, "BOTTOMRIGHT", 5, -5 },
+            { "TOPLEFT", button, "TOPLEFT", -2, 2 },
+            { "BOTTOMRIGHT", button, "BOTTOMRIGHT", 2, -2 },
         })
     end)
 
-    it("a soft glow: five rings of 1 px, red, additive, alpha falling outward; pulse 0.35 <-> 1, 0.6 s, BOUNCE", function()
+    it("four red edges with additive blending and a pulse 0.35 <-> 1, 0.6 s, BOUNCE", function()
         local SMB = fresh({ tracking = gatherer(false) })
         local Glow = SMB.TrackerGlow
-        assert_eq(SMB.TrackerGlowSize, 5)
-        assert_eq(#Glow.Rings, 5)
-        assert_eq(#Glow.Edges, 20)
-        local last = math.huge
-        for ring, edges in ipairs(Glow.Rings) do
-            assert_eq(#edges, 4, "ring " .. ring)
-            local alpha = StubState(edges[1]).colorTexture[4]
-            assert_true(alpha > 0 and alpha < last, "ring " .. ring .. " fainter than the one inside it")
-            last = alpha
-            local k = 5 - ring
-            for i, edge in ipairs(edges) do
-                local state = StubState(edge)
-                assert_eq({ state.colorTexture[1], state.colorTexture[2], state.colorTexture[3] }, { 1, 0, 0 })
-                assert_eq(state.colorTexture[4], alpha, "one alpha per ring")
-                assert_eq(state.blendMode, "ADD")
-                assert_nil(state.texture, "no image file")
-                assert_eq(#state.points, 2, "ring " .. ring .. " edge " .. i .. " anchored on both ends")
-            end
-            assert_eq(StubState(edges[1]).points, {
-                { "TOPLEFT", Glow, "TOPLEFT", k, -k }, { "TOPRIGHT", Glow, "TOPRIGHT", -k, -k },
-            }, "top edge of ring " .. ring)
-            assert_eq(edges[1]:GetHeight(), 1)
-            assert_eq(StubState(edges[3]).points, {
-                { "TOPLEFT", Glow, "TOPLEFT", k, -k - 1 }, { "BOTTOMLEFT", Glow, "BOTTOMLEFT", k, k + 1 },
-            }, "left edge of ring " .. ring .. " between top and bottom")
-            assert_eq(edges[3]:GetWidth(), 1)
+        assert_eq(#Glow.Edges, 4)
+        for _, edge in ipairs(Glow.Edges) do
+            assert_eq(StubState(edge).colorTexture, { 1, 0, 0, 1 })
+            assert_eq(StubState(edge).blendMode, "ADD")
         end
-        assert_true(math.abs(StubState(Glow.Rings[1][1]).colorTexture[4] - 0.85) < 1e-9, "inner ring 0.85")
         assert_eq(Glow.Pulse.looping, "BOUNCE")
         local anim = Glow.Pulse.animations[1]
         assert_eq(anim.type, "Alpha")
         assert_eq(anim.calls.SetFromAlpha, { 0.35 })
         assert_eq(anim.calls.SetToAlpha, { 1 })
         assert_eq(anim.calls.SetDuration, { 0.6 })
-    end)
-
-    it("the glow lies over the neighbouring buttons without catching the mouse there", function()
-        local SMB = fresh({ tracking = gatherer(false) })
-        local neighbour = NewLibDBIconButton("Neighbour")
-        SMB:GrabMinimapButtons(true)
-        AdvanceTime(7.1)
-        local button, Glow = trackerButton(), SMB.TrackerGlow
-        assert_true(neighbour:GetParent() == SMB.Bar, "a real neighbour in the bar")
-        assert_true(Glow:GetFrameLevel() > button:GetFrameLevel())
-        local others = 0
-        for _, other in ipairs(SMB.Buttons) do
-            if other ~= button and other:GetParent() == SMB.Bar then
-                others = others + 1
-                assert_eq(Glow:GetFrameStrata(), other:GetFrameStrata(), SMB:GetButtonLabel(other))
-                assert_true(Glow:GetFrameLevel() > other:GetFrameLevel(), "over " .. SMB:GetButtonLabel(other))
-            end
-        end
-        assert_true(others >= 1)
-        assert_false(Glow:IsMouseEnabled())
-        for _, edge in ipairs(Glow.Edges) do
-            assert_eq(StubState(edge).blendMode, "ADD", "additive: brightens, covers nothing")
-        end
     end)
 
     it("one glow frame only, however often it is updated", function()

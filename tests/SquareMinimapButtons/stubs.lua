@@ -518,19 +518,7 @@ function Texture:GetTextureFileID()
 end
 function Texture:GetTextureFilePath() return st(self).texture end
 function Texture:SetColorTexture(r, g, b, a) st(self).colorTexture = { r, g, b, a } end
--- As in the client, SetAtlas also sets the texture coordinates: those of the atlas (when the stub's
--- C_Texture.GetAtlasInfo knows them), else the full image.
-function Texture:SetAtlas(atlas)
-    local s = st(self)
-    s.atlas, s.texture = atlas, nil
-    local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas)
-    if info and info.leftTexCoord then
-        local l, r, t, b = info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
-        s.texCoord = { l, t, l, b, r, t, r, b }
-    else
-        s.texCoord = { 0, 0, 0, 1, 1, 0, 1, 1 }
-    end
-end
+function Texture:SetAtlas(atlas) local s = st(self); s.atlas = atlas; s.texture = nil end
 function Texture:GetAtlas() return st(self).atlas end
 function Texture:SetTexCoord(...)
     local n = select("#", ...)
@@ -780,35 +768,13 @@ local function installDefaultUI(config)
             STUB.calls.IndicatorFrameUpdatePosition = (STUB.calls.IndicatorFrameUpdatePosition or 0) + 1
         end
     end
-    -- Forever (Camelot/MinimapTrackingButton.xml and .lua): StateTexture and AddTexture with the
-    -- atlas ui-hud-minimap-tracking-button (AddTexture hidden, blend mode ADD, alpha 0); on every
-    -- button state change Blizzard sets the atlas of StateTexture again and the shown state and the
-    -- alpha of AddTexture (OnButtonStateChanged, played here by OnEnter/OnLeave/OnMouseDown/OnMouseUp).
     if MinimapCluster.Tracking then
         local button = MinimapCluster.Tracking.Button
         button.log = {}
-        local function stateChanged(self, addAlpha)
-            if not self.StateTexture then return end
-            self.StateTexture:SetAtlas("ui-hud-minimap-tracking-button")
-            self.AddTexture:SetShown(addAlpha > 0)
-            self.AddTexture:SetAlpha(addAlpha)
-        end
-        if isForever then
-            -- textures of the XML without anchors fill their button
-            button.StateTexture = button:CreateTexture(nil, "ARTWORK")
-            button.StateTexture:SetAllPoints(button)
-            button.StateTexture:SetAtlas("ui-hud-minimap-tracking-button")
-            button.AddTexture = button:CreateTexture(nil, "ARTWORK")
-            button.AddTexture:SetAllPoints(button)
-            button.AddTexture:SetAtlas("ui-hud-minimap-tracking-button")
-            button.AddTexture:Hide()
-            button.AddTexture:SetBlendMode("ADD")
-            button.AddTexture:SetAlpha(0)
-        end
-        button:SetScript("OnMouseDown", function(self) self.log[#self.log + 1] = "OnMouseDown"; stateChanged(self, 0.2) end)
-        button:SetScript("OnMouseUp", function(self) self.log[#self.log + 1] = "OnMouseUp"; stateChanged(self, 0.1) end)
-        button:SetScript("OnEnter", function(self) self.log[#self.log + 1] = "OnEnter"; stateChanged(self, 0.1) end)
-        button:SetScript("OnLeave", function(self) self.log[#self.log + 1] = "OnLeave"; stateChanged(self, 0) end)
+        button:SetScript("OnMouseDown", function(self) self.log[#self.log + 1] = "OnMouseDown" end)
+        button:SetScript("OnMouseUp", function(self) self.log[#self.log + 1] = "OnMouseUp" end)
+        button:SetScript("OnEnter", function(self) self.log[#self.log + 1] = "OnEnter" end)
+        button:SetScript("OnLeave", function(self) self.log[#self.log + 1] = "OnLeave" end)
     end
 
     -- Calendar button, one version per client:
@@ -1335,10 +1301,6 @@ local function installUIFunctions()
         GetAtlasInfo = function(atlas)
             if STUB.config.noAtlasInfo then return nil end
             if atlas == "ui-hud-minimap-calendar-button" then return { width = 23, height = 23 } end
-            -- texture coordinates made up for the tests (the real ones are in the client's atlas data)
-            if atlas == "ui-hud-minimap-tracking-button" then
-                return { width = 23, height = 23, leftTexCoord = 0.5, rightTexCoord = 0.75, topTexCoord = 0.25, bottomTexCoord = 0.5 }
-            end
         end,
     }
     function GetMinimapShape() return "SQUARE" end
@@ -1527,29 +1489,6 @@ end
 --------------------------------------------------------------------------------
 -- Test buttons on the minimap
 --------------------------------------------------------------------------------
-
--- What the client would draw of a texture, as far as the tests need it: an image (file, atlas or
--- color), shown together with the frame it belongs to, alpha above 0, at least one anchor and, with
--- a single anchor, a width and a height above 0; a mask without an image hides the texture. A
--- texture without anchors is not drawn, whatever its size (the client places nothing it cannot
--- anchor). Returns false and the reason.
-function RegionDrawn(region)
-    local s = S[region]
-    if not s then return false, "not a stub object" end
-    local hasImage = (s.texture ~= nil and s.texture ~= "") or s.atlas ~= nil or s.colorTexture ~= nil
-    if not hasImage then return false, "no image" end
-    if not s.shown then return false, "hidden" end
-    local parent = s.parent and S[s.parent]
-    if parent and not parent.shown then return false, "frame hidden" end
-    if not (type(s.alpha) == "number" and s.alpha > 0) then return false, "alpha 0" end
-    if #s.points == 0 then return false, "no anchors" end
-    if #s.points == 1 and not (s.width > 0 and s.height > 0) then return false, "one anchor without size" end
-    for _, mask in ipairs(s.masks or {}) do
-        local m = S[mask]
-        if not m or m.texture == nil or m.texture == "" then return false, "empty mask" end
-    end
-    return true
-end
 
 -- Marks a texture whose GetTexCoord returns secret values (see Texture:GetTexCoord).
 function MarkSecretTexCoord(texture)

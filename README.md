@@ -10,8 +10,6 @@ The addon itself is the folder [`SquareMinimapButtons/`](SquareMinimapButtons/);
 2. Extract it into the `Interface\AddOns` folder of your WoW installation, so that `Interface\AddOns\SquareMinimapButtons\SquareMinimapButtons.toc` exists.
 3. Restart the game and enable **Square Minimap Buttons** in the addon list. `/smb` opens the options (also `/squareminimap` and `/squareminimapbuttons`).
 
-If a button in the bar stays empty or shows a replacement image (the chat names it), please report it with the output of `/smb debug <name>`.
-
 ProjectAzilroka and this addon must not run at the same time; the addon stays inactive while ProjectAzilroka's Square Minimap Buttons module is enabled and says so in the chat.
 
 ## Development

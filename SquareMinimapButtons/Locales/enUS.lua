@@ -50,20 +50,13 @@ L['ProjectAzilroka is loaded and its Square Minimap Buttons module is enabled, s
 L['ProjectAzilroka is loaded, but its settings could not be read, so this addon stays inactive. Disable one of the two to avoid conflicts.'] = true
 
 -- WoW Forever port: slash command
-L['Usage: /smb [scan | reset | debug [name]] (also /squareminimap and /squareminimapbuttons)'] = true
+L['Usage: /smb [scan | reset] (also /squareminimap and /squareminimapbuttons)'] = true
 L['/smb: open the options'] = true
 L['/smb scan: scan the minimap for new buttons now'] = true
 L['/smb reset: reset the current profile to the defaults'] = true
 L['The options are not available yet.'] = true
 L['Scanning is not available yet.'] = true
 L['The current profile was reset to the defaults.'] = true
-L['/smb debug [name]: list the buttons of the bar with their textures (all, or those whose name contains the text)'] = true
-
--- WoW Forever port 1.0.2: self-check of the buttons and diagnosis (chat; %s: button names, %d: count)
-L['%s showed no icon in the bar and shows a replacement image now (%s). Please report it with the output of /smb debug %s.'] = true
-L['The bar does not exist (the addon is turned off or inactive).'] = true
-L['No button of the bar matches "%s".'] = true
-L['%d buttons listed (/smb debug %s).'] = true
 
 -- WoW Forever port: one-time switch to the shared profile (chat, %s: profile names)
 L['this character now uses the shared profile %s'] = true

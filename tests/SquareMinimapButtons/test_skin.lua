@@ -55,6 +55,18 @@ describe("textures of a LibDBIcon button", function()
         assertInside(icon, button)
     end)
 
+    it("keeps the icon's anchors when another addon calls ClearAllPoints and SetPoint after the skin (ItemRack Universal)", function()
+        local SMB = fresh()
+        local button = NewLibDBIconButton("ItemRack")
+        SMB:SkinMinimapButton(button)
+        local icon = button.icon
+        assert_true(icon.ClearAllPoints == SMB.Noop)
+        icon:ClearAllPoints()
+        icon:SetPoint("CENTER", button, "CENTER", 0, 0)
+        assert_eq(icon:GetNumPoints(), 2, "icon still anchored")
+        assertInside(icon, button)
+    end)
+
     it("keeps LibDBIcon's own 5 % inset of the icon (the crop applies only to full coordinates)", function()
         local SMB = fresh()
         local button = NewLibDBIconButton("Alpha")
