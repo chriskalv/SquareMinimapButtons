@@ -46,7 +46,9 @@
 	  - a red glow pulses around the tracker button while the character can track something but
 	    no tracking ability is active (db.TrackerGlowMode: always, only outside of raid instances, or
 	    off; new, after a WeakAura of the owner);
-	  - CheckTexture and SMB.Hider of the original are unused there and left out.
+	  - CheckTexture and SMB.Hider of the original are unused there and left out;
+	  - in WoW Forever the tracking button's icon is zoomed into the magnifying glass, without
+	    Blizzard's bronze frame (SMB:ZoomTrackingIcon, new).
 ]]
 
 local _, ns = ...
@@ -163,6 +165,32 @@ end
 
 local CALENDAR_ATLAS = 'ui-hud-minimap-calendar-button'
 
+-- WoW Forever's tracking button (Blizzard_Minimap/Camelot/MinimapTrackingButton.xml and .lua) draws
+-- StateTexture and AddTexture (blend ADD, alpha 0.1/0.2 under the mouse or pressed), both with the
+-- atlas ui-hud-minimap-tracking-button: one image with the bronze frame and the magnifying glass.
+-- Cropping that image cuts the frame off. The texture coordinates of an atlas texture are fractions
+-- 0..1 of the atlas image, not of the file: Blizzard mirrors atlas textures with 1,0,0,1
+-- (Blizzard_SharedXML/Mainline/SharedUIPanelTemplates.lua, Blizzard_UIPanels_Game/Camelot/
+-- SkillsFrame.xml) and crops them with left,right,0,1 (Blizzard_UIPanels_Game/Shared/
+-- CastingBarFrame.lua). 1.0.2 passed the file coordinates of C_Texture.GetAtlasInfo to an own
+-- texture and showed a magnified dark patch instead of the glass.
+-- Fraction of the image cut from each side: the frame ends at about 14 % from each edge, the glass
+-- lies between about 22 % and 78 % (measured on a screenshot of the button at 23 px).
+SMB.TrackingIconZoom = 0.17
+
+-- Sets fixed coordinates (never derived from the current ones, so repeated calls cannot compound).
+-- Only the coordinates change: atlas, alpha and shown state stay Blizzard's.
+function SMB:ZoomTrackingIcon(button)
+	if type(button) ~= 'table' then return end
+	local zoom = SMB.TrackingIconZoom
+	for _, key in ipairs({ 'StateTexture', 'AddTexture' }) do
+		local region = button[key]
+		if type(region) == 'table' and type(region.SetTexCoord) == 'function' then
+			region:SetTexCoord(zoom, 1 - zoom, zoom, 1 - zoom)
+		end
+	end
+end
+
 function SMB:HandleBlizzardButtons()
 	-- the bar exists only after Initialize
 	if not SMB.Bar or not SMB.db.BarEnabled then return end
@@ -256,6 +284,18 @@ function SMB:HandleBlizzardButtons()
 					UIFrameFadeOut(SMB.Bar, 0.2, SMB.Bar:GetAlpha(), 0)
 				end
 			end)
+
+			-- Forever: the icon is zoomed into the magnifying glass (see SMB:ZoomTrackingIcon). Blizzard's
+			-- OnButtonStateChanged calls SetAtlas on StateTexture at every button state change, and
+			-- whether SetAtlas resets the coordinates is not known (optional argument resetTexCoords),
+			-- so they are set again after it.
+			if SMB.IsForever then
+				SMB:ZoomTrackingIcon(TrackingButton)
+				local hooksecurefunc = _G.hooksecurefunc
+				if type(hooksecurefunc) == 'function' and type(TrackingButton.OnButtonStateChanged) == 'function' then
+					hooksecurefunc(TrackingButton, 'OnButtonStateChanged', function(self) SMB:ZoomTrackingIcon(self) end)
+				end
+			end
 
 			TrackingButton.SMB = true
 

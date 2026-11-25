@@ -385,6 +385,161 @@ describe("tracking", function()
     end)
 end)
 
+-- Forever: the tracking icon is zoomed into the magnifying glass (SMB:ZoomTrackingIcon). The stub of
+-- the button mirrors Blizzard_Minimap/Camelot/MinimapTrackingButton.xml and .lua (see stubs.lua);
+-- whether the client's SetAtlas resets the coordinates is unknown, so the state changes are tested
+-- with both stub variants (config.atlasResetsTexCoord).
+local ZOOMED = { 0.17, 0.17, 0.17, 0.83, 0.83, 0.17, 0.83, 0.83 }
+local PLAIN = { 0, 0, 0, 1, 1, 0, 1, 1 }
+
+local function assertCoords(texture, expected, msg)
+    local actual = { texture:GetTexCoord() }
+    assert_eq(#actual, 8, msg)
+    for i = 1, 8 do assert_near(actual[i], expected[i], 1e-9, (msg or "") .. " (coordinate " .. i .. ")") end
+end
+
+local function enter(button) button:GetScript("OnEnter")(button) end
+local function leave(button) button:GetScript("OnLeave")(button) end
+
+describe("tracking icon zoom", function()
+    it("Forever with MoveTracker: StateTexture and AddTexture show 0.17 to 0.83", function()
+        local SMB = built()
+        local Button = MinimapCluster.Tracking.Button
+        assert_eq(SMB.TrackingIconZoom, 0.17)
+        assertCoords(Button.StateTexture, ZOOMED, "StateTexture")
+        assertCoords(Button.AddTexture, ZOOMED, "AddTexture")
+    end)
+
+    it("after enter and leave the coordinates stay, whether SetAtlas resets them or keeps them", function()
+        for _, reset in ipairs({ false, true }) do
+            local SMB = built({ atlasResetsTexCoord = reset })
+            local Button = MinimapCluster.Tracking.Button
+            local label = reset and "SetAtlas resets" or "SetAtlas keeps"
+            enter(Button)
+            assertCoords(Button.StateTexture, ZOOMED, label .. ", over")
+            assertCoords(Button.AddTexture, ZOOMED, label .. ", over (AddTexture)")
+            leave(Button)
+            assertCoords(Button.StateTexture, ZOOMED, label .. ", after leave")
+            for _ = 1, 5 do
+                enter(Button)
+                leave(Button)
+                Button:OnButtonStateChanged()
+            end
+            assertCoords(Button.StateTexture, ZOOMED, label .. ", no compounding")
+            assertCoords(Button.AddTexture, ZOOMED, label .. ", no compounding (AddTexture)")
+        end
+    end)
+
+    it("the stub's SetAtlas resets the coordinates only with atlasResetsTexCoord", function()
+        built({ atlasResetsTexCoord = true })
+        local t = MinimapCluster.Tracking.Button.StateTexture
+        t:SetAtlas("ui-hud-minimap-tracking-button", true)
+        assertCoords(t, PLAIN, "reset")
+        built()
+        t = MinimapCluster.Tracking.Button.StateTexture
+        t:SetTexCoord(0.1, 0.9, 0.1, 0.9)
+        t:SetAtlas("ui-hud-minimap-tracking-button", true)
+        assertCoords(t, { 0.1, 0.1, 0.1, 0.9, 0.9, 0.1, 0.9, 0.9 }, "kept")
+    end)
+
+    it("nothing else changes: atlas, alpha and shown state stay Blizzard's, no own icon", function()
+        local SMB = built()
+        local Button = MinimapCluster.Tracking.Button
+        local State, Add = Button.StateTexture, Button.AddTexture
+        assert_eq(State:GetAtlas(), "ui-hud-minimap-tracking-button")
+        assert_eq(State:GetAlpha(), 1)
+        assert_true(State:IsShown())
+        assert_eq(Add:GetAtlas(), "ui-hud-minimap-tracking-button")
+        assert_eq(Add:GetAlpha(), 0)
+        assert_false(Add:IsShown())
+        assert_eq(StubState(Add).blendMode, "ADD")
+        assert_nil(Button.SMBIcon)
+        local before = STUB.calls.TrackingOnButtonStateChanged or 0
+        enter(Button)
+        assert_eq(STUB.calls.TrackingOnButtonStateChanged, before + 1, "Blizzard's handler runs")
+        assert_eq(Add:GetAlpha(), 0.1)
+        assert_true(Add:IsShown())
+        assert_eq(State:GetAtlas(), "ui-hud-minimap-tracking-button")
+        assert_eq(State:GetAlpha(), 1)
+        assert_true(State:IsShown())
+        leave(Button)
+        assert_eq(STUB.calls.TrackingOnButtonStateChanged, before + 2)
+        assert_eq(Add:GetAlpha(), 0)
+        assert_false(Add:IsShown())
+        assert_eq(Add:GetAtlas(), "ui-hud-minimap-tracking-button")
+        assert_eq(Button.log, { "OnEnter", "OnLeave" })
+        assert_nil(Button.SMBIcon)
+        assert_eq(#STUB.errors, 0)
+    end)
+
+    it("Retail and MoveTracker off: the coordinates are untouched", function()
+        local SMB = fresh({ projectID = RETAIL })
+        local Button = MinimapCluster.Tracking.Button
+        -- the Retail stub has no such textures; give it some to see that nothing touches them
+        Button.StateTexture = Button:CreateTexture(nil, "ARTWORK")
+        Button.AddTexture = Button:CreateTexture(nil, "ARTWORK")
+        SMB:HandleBlizzardButtons()
+        assert_true(Button:GetParent() == SMB.Bar)
+        assertCoords(Button.StateTexture, PLAIN, "Retail StateTexture")
+        assertCoords(Button.AddTexture, PLAIN, "Retail AddTexture")
+
+        built(withProfile({ MoveTracker = false }))
+        Button = MinimapCluster.Tracking.Button
+        assert_true(Button:GetParent() == MinimapCluster.Tracking)
+        assertCoords(Button.StateTexture, PLAIN, "MoveTracker off")
+        assertCoords(Button.AddTexture, PLAIN, "MoveTracker off (AddTexture)")
+        enter(Button)
+        assertCoords(Button.StateTexture, PLAIN, "MoveTracker off, after a state change")
+    end)
+
+    it("without StateTexture, AddTexture or OnButtonStateChanged: no error, the rest is zoomed", function()
+        local SMB = fresh()
+        local Button = MinimapCluster.Tracking.Button
+        Button.StateTexture = nil
+        SMB:HandleBlizzardButtons()
+        assert_true(Button.SMB)
+        assertCoords(Button.AddTexture, ZOOMED, "AddTexture without StateTexture")
+
+        SMB = fresh()
+        Button = MinimapCluster.Tracking.Button
+        Button.AddTexture = nil
+        Button.OnButtonStateChanged = function(self) self.StateTexture:SetAtlas("ui-hud-minimap-tracking-button", true) end
+        SMB:HandleBlizzardButtons()
+        assert_true(Button.SMB)
+        assertCoords(Button.StateTexture, ZOOMED, "StateTexture without AddTexture")
+        enter(Button)
+        assertCoords(Button.StateTexture, ZOOMED, "StateTexture without AddTexture, after a state change")
+
+        SMB = fresh({ atlasResetsTexCoord = true })
+        Button = MinimapCluster.Tracking.Button
+        Button.OnButtonStateChanged = nil
+        SMB:HandleBlizzardButtons()
+        assert_true(Button.SMB)
+        assert_nil(Button.OnButtonStateChanged, "no hook on a missing method")
+        assertCoords(Button.StateTexture, ZOOMED, "without OnButtonStateChanged")
+        assertCoords(Button.AddTexture, ZOOMED, "without OnButtonStateChanged (AddTexture)")
+        enter(Button)
+        leave(Button)
+
+        SMB = fresh()
+        Button = MinimapCluster.Tracking.Button
+        local handler = Button.OnButtonStateChanged
+        hooksecurefunc = nil
+        SMB:HandleBlizzardButtons()
+        assert_true(Button.SMB)
+        assert_true(Button.OnButtonStateChanged == handler, "without hooksecurefunc no hook")
+        assertCoords(Button.StateTexture, ZOOMED, "without hooksecurefunc")
+        assertCoords(Button.AddTexture, ZOOMED, "without hooksecurefunc (AddTexture)")
+
+        SMB = fresh()
+        Button = MinimapCluster.Tracking.Button
+        Button.StateTexture, Button.AddTexture = nil, nil
+        SMB:HandleBlizzardButtons()
+        assert_true(Button.SMB)
+        assert_eq(#STUB.errors, 0)
+    end)
+end)
+
 describe("calendar", function()
     it("Forever: no GameTimeTexture, Blizzard's textures transparent, own icon, child of the bar", function()
         local SMB = built()

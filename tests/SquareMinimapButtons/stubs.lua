@@ -32,6 +32,8 @@
 --                 MinimapMailFrameUpdate = true }: these frames or functions of the default UI do
 --                 not exist (Tracking: MinimapCluster.Tracking)
 --   noAtlasInfo   true: C_Texture.GetAtlasInfo knows no atlas
+--   atlasResetsTexCoord  true: Texture:SetAtlas resets the texture coordinates to 0,1,0,1
+--                 (default: SetAtlas keeps them; the client's default is not known)
 --   noSecretAPI   true: no issecretvalue (clients without the secret system)
 --   savedVariables  initial value of SquareMinimapButtonsDB
 --
@@ -518,7 +520,17 @@ function Texture:GetTextureFileID()
 end
 function Texture:GetTextureFilePath() return st(self).texture end
 function Texture:SetColorTexture(r, g, b, a) st(self).colorTexture = { r, g, b, a } end
-function Texture:SetAtlas(atlas) local s = st(self); s.atlas = atlas; s.texture = nil end
+-- Whether SetAtlas resets the texture coordinates is not documented (the optional argument
+-- resetTexCoords has no known default): config.atlasResetsTexCoord = true resets them to 0,1,0,1,
+-- otherwise they are kept.
+function Texture:SetAtlas(atlas)
+    local s = st(self)
+    s.atlas = atlas
+    s.texture = nil
+    if STUB and STUB.config and STUB.config.atlasResetsTexCoord then
+        s.texCoord = { 0, 0, 0, 1, 1, 0, 1, 1 }
+    end
+end
 function Texture:GetAtlas() return st(self).atlas end
 function Texture:SetTexCoord(...)
     local n = select("#", ...)
@@ -768,13 +780,61 @@ local function installDefaultUI(config)
             STUB.calls.IndicatorFrameUpdatePosition = (STUB.calls.IndicatorFrameUpdatePosition or 0) + 1
         end
     end
+    -- Forever's tracking button (Blizzard_Minimap/Camelot/MinimapTrackingButton.xml and .lua):
+    -- StateTexture and AddTexture in the layer ARTWORK, both with the atlas
+    -- ui-hud-minimap-tracking-button (bronze frame and magnifying glass in one image); OnLoad sets
+    -- AddTexture to blend ADD and alpha 0 (hidden in the XML). OnButtonStateChanged sets the atlas
+    -- of StateTexture again and shows AddTexture with mouseoverAddAlpha 0.1 or mousedownAddAlpha
+    -- 0.2. The scripts reach it by self:OnButtonStateChanged() as ButtonStateBehaviorMixin does
+    -- (Blizzard_SharedXMLBase/ButtonStateBehavior.lua), so a hook on the button's field runs.
     if MinimapCluster.Tracking then
         local button = MinimapCluster.Tracking.Button
         button.log = {}
-        button:SetScript("OnMouseDown", function(self) self.log[#self.log + 1] = "OnMouseDown" end)
-        button:SetScript("OnMouseUp", function(self) self.log[#self.log + 1] = "OnMouseUp" end)
-        button:SetScript("OnEnter", function(self) self.log[#self.log + 1] = "OnEnter" end)
-        button:SetScript("OnLeave", function(self) self.log[#self.log + 1] = "OnLeave" end)
+        if isForever then
+            local TRACKING_ATLAS = "ui-hud-minimap-tracking-button"
+            button.mouseoverAddAlpha, button.mousedownAddAlpha = 0.1, 0.2
+            button.StateTexture = button:CreateTexture(nil, "ARTWORK")
+            button.StateTexture:SetAtlas(TRACKING_ATLAS, true)
+            button.AddTexture = button:CreateTexture(nil, "ARTWORK")
+            button.AddTexture:SetAtlas(TRACKING_ATLAS, true)
+            button.AddTexture:Hide()
+            button.AddTexture:SetBlendMode("ADD")
+            button.AddTexture:SetAlpha(0)
+            function button:OnButtonStateChanged()
+                STUB.calls.TrackingOnButtonStateChanged = (STUB.calls.TrackingOnButtonStateChanged or 0) + 1
+                self.StateTexture:SetAtlas(TRACKING_ATLAS, true)
+                local isMouseDown = (self.down and self.over) or self.down
+                local isMouseOver = self.over
+                local addAlpha = 0
+                if isMouseDown then
+                    addAlpha = self.mousedownAddAlpha
+                elseif isMouseOver then
+                    addAlpha = self.mouseoverAddAlpha
+                end
+                self.AddTexture:SetShown(addAlpha > 0)
+                self.AddTexture:SetAlpha(addAlpha)
+            end
+            local function stateScript(name, field, value)
+                button:SetScript(name, function(self)
+                    self.log[#self.log + 1] = name
+                    self[field] = value
+                    -- ButtonStateBehaviorMixin has an empty OnButtonStateChanged as the base; a test
+                    -- that removes the field plays that base here
+                    if type(self.OnButtonStateChanged) == "function" then
+                        self:OnButtonStateChanged()
+                    end
+                end)
+            end
+            stateScript("OnMouseDown", "down", true)
+            stateScript("OnMouseUp", "down", nil)
+            stateScript("OnEnter", "over", true)
+            stateScript("OnLeave", "over", nil)
+        else
+            button:SetScript("OnMouseDown", function(self) self.log[#self.log + 1] = "OnMouseDown" end)
+            button:SetScript("OnMouseUp", function(self) self.log[#self.log + 1] = "OnMouseUp" end)
+            button:SetScript("OnEnter", function(self) self.log[#self.log + 1] = "OnEnter" end)
+            button:SetScript("OnLeave", function(self) self.log[#self.log + 1] = "OnLeave" end)
+        end
     end
 
     -- Calendar button, one version per client:

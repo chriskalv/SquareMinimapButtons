@@ -2,7 +2,7 @@
 
 Port of the *Square Minimap Buttons* module of [ProjectAzilroka](https://github.com/Azilroka/ProjectAzilroka) by Azilroka to **WoW Forever** (Interface 16001), as a standalone addon. It collects the minimap buttons of other addons into a bar and skins them square, like the original module.
 
-> **Version 1.0.3.** On GitHub since 1.0.0 (2026-11-07, [Releases](https://github.com/chriskalv/SquareMinimapButtons/releases)); the checks in the WoW Forever client listed below continue (see [Known limits and client checks](#known-limits-and-client-checks)). Changes per version are in [`CHANGELOG.md`](CHANGELOG.md).
+> **Version 1.0.4.** On GitHub since 1.0.0 (2026-11-07, [Releases](https://github.com/chriskalv/SquareMinimapButtons/releases)); the checks in the WoW Forever client listed below continue (see [Known limits and client checks](#known-limits-and-client-checks)). Changes per version are in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## What it does
 
@@ -148,7 +148,7 @@ Seven seconds after the start (and after a profile change or when one is turned 
 ## Notes for WoW Forever
 
 - **Secret values when cropping**: WoW Forever can return values as secret values. Texture coordinates that are secret (checked with `issecretvalue` where the client has it) or not numbers are not compared; such an icon keeps its coordinates instead of being cropped.
-- **Tracking**: in WoW Forever the tracking button's `Show` shows or hides its whole tracking frame, so ProjectAzilroka's call would hide it. The addon shows the tracking frame instead and moves only the button into the bar.
+- **Tracking**: in WoW Forever the tracking button's `Show` shows or hides its whole tracking frame, so ProjectAzilroka's call would hide it. The addon shows the tracking frame instead and moves only the button into the bar. Its image (atlas `ui-hud-minimap-tracking-button`, bronze frame and magnifying glass in one) is zoomed into the glass: the texture coordinates of `StateTexture` and `AddTexture` cut 17 % from each side (`SMB.TrackingIconZoom`), set again after each of Blizzard's button state changes; atlas, alpha and the highlight under the mouse stay Blizzard's.
 - **Calendar**: the WoW Forever calendar button has no `GameTimeTexture` (ProjectAzilroka would stop with an error there). The addon makes Blizzard's own textures of the button transparent and shows its own calendar icon (the atlas of Blizzard's button) inside the square frame; a click still opens the calendar.
 - **Queue click and ElvUI lock**: the queue button is off by default in WoW Forever until it is checked in the client, because it is an Edit Mode system and moving it may cause taint. A click on the eye opens the group finder through `ToggleGroupFinderFrame()` (WoW Forever has no `PVEFrame`). If ElvUI's queue module is loaded (frame `ElvUIQueueStatus`), the addon leaves the queue button alone, because ElvUI puts it back into its own mover at once; the option is disabled then, with a hint.
 - **Garrison hidden**: ProjectAzilroka's code for the garrison button is disabled, so the two garrison options have no effect; in WoW Forever (and Classic) they are hidden.
@@ -158,7 +158,7 @@ Seven seconds after the start (and after a profile change or when one is turned 
 Each difference below is part of this version; where possible it can be switched off or is set so that the original behavior results.
 
 - Client detection for WoW Forever (`WOW_PROJECT_ID == WOW_PROJECT_CAMELOT`) with its own branches for the Blizzard buttons; ProjectAzilroka knows only Retail and Classic.
-- Blizzard buttons in WoW Forever: tracking button moved without hiding its tracking frame, own calendar branch (ProjectAzilroka's `GameTimeTexture` does not exist there), queue click through `ToggleGroupFinderFrame()`.
+- Blizzard buttons in WoW Forever: tracking button moved without hiding its tracking frame and zoomed into its magnifying glass (without Blizzard's frame), own calendar branch (ProjectAzilroka's `GameTimeTexture` does not exist there), queue click through `ToggleGroupFinderFrame()`.
 - *Move Queue Status Icon* is off by default in WoW Forever (on in Retail and Classic, as in ProjectAzilroka) and disabled while ElvUI's queue module holds the queue button.
 - Texture coordinates that the client returns as secret values are not compared.
 - Default profile after Zippy's classic UI: one column of 18 px buttons without spacing, anchored inside the top left corner of the minimap (`ButtonsPerRow` 1, `IconSize` 18, `ButtonSpacing` 0; ProjectAzilroka: 12 and 20, bar at the right screen edge). The profile *Default* is shared by all characters (ProjectAzilroka uses the profiles of its own database).
@@ -218,6 +218,7 @@ Checks in the WoW Forever client, once with ElvUI and once without:
 - [ ] **C10**: options in the game settings and, with ElvUI, in ElvUI's options (the same tabs); a profile change rebuilds the bar.
 - [ ] **C11**: tracker glow: a herbalist (or miner) with no tracking active sees the tracking button pulse red (in the bar and, with *Move Tracker Icon* off, at the minimap); casting Find Herbs ends it, cancelling it starts it again; with Sense Undead (or another tracking ability) on instead of Find Herbs, the glow shows; a character without a gathering profession never sees it; no glow while dead, as a ghost or on a flight path; clicks on the tracking button still open its menu; after Alt+Z and back the glow still pulses. In a client with another language than English the glow behaves the same. The tab *Blizzard* shows *Glowing tracking icon* as a box with three radio buttons under *Move Tracker Icon*, the default checked and every label readable (also in German); in a raid instance there is no glow with the default, with *always* the glow shows at once, with *off* it goes at once; after leaving the raid instance (loading screen) the glow comes back with the default; in a dungeon it shows with the default. A profile from before 2026-11-07 with the toggle off is on *off*.
 - [ ] **C12**: with RestedXP installed the tab *Profiles* shows no buttons *Reload guides and UI* or *Reset Guide Progress* (nor *Set current profile as default*); the profile controls work: *Reset Profile*, *New*, choosing an existing profile, *Copy From*, *Delete a Profile*.
+- [ ] **C13**: tracking button in the bar (1.0.4): the magnifying glass fills the square without the bronze frame and is not a dark or blurred patch; it stays so after moving the mouse over it, pressing it and opening and closing its menu; under the mouse it lights up as before.
 
 ## Credits and license
 

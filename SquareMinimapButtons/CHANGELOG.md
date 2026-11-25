@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.4 (2026-11-25)
+
+- The tracking button in the bar shows the magnifying glass without Blizzard's bronze frame: the button's image is zoomed into the glass. Blizzard's own image is kept, nothing is hidden or replaced, and the glass still lights up under the mouse.
+- This is the only change from 1.0.3.
+
 ## 1.0.3 (2026-11-25)
 
 - 1.0.2 is withdrawn: in the game it broke the icons of other addons and hid the tracking button's magnifying glass.
