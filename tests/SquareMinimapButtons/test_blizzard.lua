@@ -465,6 +465,35 @@ describe("tracking icon without Blizzard's frame (1.0.2)", function()
         assert_eq(STUB.errors, {})
     end)
 
+    -- AtlasInfo of the tracking atlas with one texture coordinate removed
+    local function withoutCoord(field)
+        local info = { width = 23, height = 23, leftTexCoord = 0.5, rightTexCoord = 0.75, topTexCoord = 0.25, bottomTexCoord = 0.5 }
+        info[field] = nil
+        return function(atlas)
+            if atlas == "ui-hud-minimap-tracking-button" then return info end
+        end
+    end
+
+    it("AtlasInfo without leftTexCoord: no error, Blizzard's textures stay, no own icon", function()
+        local SMB = built({ noAtlasInfo = true })
+        local Button = MinimapCluster.Tracking.Button
+        C_Texture.GetAtlasInfo = withoutCoord("leftTexCoord")
+        assert_false(SMB:SkinTrackingIcon(Button))
+        assert_nil(Button.SMBIcon)
+        assert_true(RegionDrawn(Button.StateTexture), "Blizzard's image stays")
+        assert_eq(STUB.errors, {})
+    end)
+
+    it("AtlasInfo without bottomTexCoord (a later field): no error, Blizzard's textures stay, no own icon", function()
+        local SMB = built({ noAtlasInfo = true })
+        local Button = MinimapCluster.Tracking.Button
+        C_Texture.GetAtlasInfo = withoutCoord("bottomTexCoord")
+        assert_false(SMB:SkinTrackingIcon(Button))
+        assert_nil(Button.SMBIcon)
+        assert_true(RegionDrawn(Button.StateTexture), "Blizzard's image stays")
+        assert_eq(STUB.errors, {})
+    end)
+
     it("MoveTracker off and Retail: nothing changes on the button", function()
         built(withProfile({ MoveTracker = false }, { projectID = FOREVER }))
         local Button = MinimapCluster.Tracking.Button

@@ -410,7 +410,9 @@ function SMB:SkinTrackingIcon(button)
 	local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(TRACKING_ATLAS)
 	if type(info) ~= 'table' then return false end
 	local l, r, t, b = info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
-	for _, value in ipairs({ l, r, t, b }) do
+	-- each of the four checked on its own: ipairs would stop at the first missing one
+	for i = 1, 4 do
+		local value = select(i, l, r, t, b)
 		if type(value) ~= 'number' or (_G.issecretvalue and _G.issecretvalue(value)) then return false end
 	end
 	local Icon = button.SMBIcon
